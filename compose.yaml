@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_PATH: /app/data/live-voting.sqlite
+      BACKUP_DIR: /app/backups
+      COOKIE_SECURE: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - live_data:/app/data
+      - live_backups:/app/backups
+
+volumes:
+  live_data:
+  live_backups:
