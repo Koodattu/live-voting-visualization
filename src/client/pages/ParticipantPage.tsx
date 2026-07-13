@@ -192,7 +192,6 @@ export function ParticipantPage() {
   return (
     <PageShell className="participant-page">
       <header className="participant-header">
-        <Brand compact />
         <span className="participant-header__session">{snapshot.title}</span>
       </header>
       {!question ? (

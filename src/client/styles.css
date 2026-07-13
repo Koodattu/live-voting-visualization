@@ -454,17 +454,12 @@ a:focus-visible {
 
 .home-intro {
   max-width: 680px;
-  margin-bottom: 48px;
+  margin: 0 auto 48px;
+  text-align: center;
 }
 
 .home-intro h1 {
-  margin: 12px 0 16px;
   font-size: clamp(42px, 7vw, 76px);
-}
-
-.home-intro p {
-  max-width: 540px;
-  font-size: 18px;
 }
 
 .session-grid {
@@ -485,6 +480,12 @@ a:focus-visible {
   transition-property: transform, box-shadow, background-color;
   transition-duration: 180ms;
   transition-timing-function: ease-out;
+}
+
+.session-card:last-child:nth-child(odd) {
+  width: calc(50% - 8px);
+  grid-column: 1 / -1;
+  justify-self: center;
 }
 
 .session-card:hover {
@@ -562,11 +563,11 @@ a:focus-visible {
 }
 
 .participant-header__session {
-  max-width: 70%;
+  max-width: 100%;
   overflow: hidden;
-  color: var(--ink-soft);
-  font-size: 14px;
-  font-weight: 650;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1425,13 +1426,13 @@ a:focus-visible {
 }
 
 .login-card h1 {
-  margin: 12px 0 14px;
+  margin: 0;
   font-size: 42px;
 }
 
 .login-card form {
   display: grid;
-  margin-top: 28px;
+  margin-top: 24px;
   gap: 15px;
 }
 
@@ -1993,10 +1994,19 @@ label > small {
 }
 
 @media (max-width: 900px) {
+  .home-presenter-link {
+    display: none;
+  }
+
   .session-grid,
   .presenter-layout,
   .ended-layout {
     grid-template-columns: 1fr;
+  }
+
+  .session-card:last-child:nth-child(odd) {
+    width: 100%;
+    grid-column: auto;
   }
 
   .field-grid {
@@ -2061,6 +2071,25 @@ label > small {
 
   .participant-stage {
     width: calc(100% - 28px);
+  }
+
+  .question-stage > h1,
+  .vote-panel__hint {
+    text-align: center;
+  }
+
+  .vote-option {
+    position: relative;
+    min-height: 72px;
+    padding: 12px 52px;
+    justify-content: center;
+    font-size: 18px;
+    text-align: center;
+  }
+
+  .vote-option .option-check {
+    position: absolute;
+    right: 16px;
   }
 
   .results-page {

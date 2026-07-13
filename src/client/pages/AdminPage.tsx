@@ -33,9 +33,7 @@ function Login({ onAuthenticated }: { onAuthenticated: () => void }) {
         </Link>
       </header>
       <main className="login-card stagger-item">
-        <span className="eyebrow">Presenter access</span>
-        <h1>Open the Admin Panel</h1>
-        <p>Use the shared presenter password for this installation.</p>
+        <h1>Admin panel</h1>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -68,7 +66,7 @@ function Login({ onAuthenticated }: { onAuthenticated: () => void }) {
           </label>
           {error && <InlineNotice tone="error">{error}</InlineNotice>}
           <Button type="submit" disabled={busy || password.length === 0}>
-            {busy ? "Opening…" : "Open Admin Panel"}
+            {busy ? "Signing in…" : "Sign in"}
           </Button>
         </form>
       </main>

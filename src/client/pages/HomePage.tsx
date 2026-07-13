@@ -36,16 +36,14 @@ export function HomePage() {
   return (
     <PageShell className="home-page">
       <header className="site-header">
-        <Brand />
-        <Link className="text-link" to="/admin">
+        <Brand compact />
+        <Link className="text-link home-presenter-link" to="/admin">
           Presenter
         </Link>
       </header>
       <main className="home-main">
         <div className="home-intro stagger-item">
-          <span className="eyebrow">Live now</span>
-          <h1>Choose a Voting Session</h1>
-          <p>Tap a session to join. No account or password needed.</p>
+          <h1>Join a session</h1>
         </div>
 
         {error ? (
