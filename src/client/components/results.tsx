@@ -105,6 +105,31 @@ export function CommentGrid({
   );
 }
 
+function StackedResultBar({ result }: { result: ChoiceResult }) {
+  return (
+    <div className="stacked-result">
+      <div className="stacked-result__track" aria-hidden="true">
+        {result.options.map((option) => (
+          <span
+            className="stacked-result__segment"
+            style={{ flexGrow: option.count }}
+            key={option.id}
+          />
+        ))}
+      </div>
+      <div className="stacked-result__legend">
+        {result.options.map((option) => (
+          <span className="stacked-result__key" key={option.id}>
+            <span className="stacked-result__swatch" aria-hidden="true" />
+            <span className="stacked-result__label">{option.label}</span>
+            <strong className="tabular">{option.percentage.toFixed(1)}%</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function QuestionResult({
   question,
   language,
@@ -119,7 +144,11 @@ export function QuestionResult({
       <h2>{question.prompt}</h2>
       {question.type === "single_choice" && question.result ? (
         <>
-          <ResultBars result={question.result} compact={compact} />
+          {compact ? (
+            <StackedResultBar result={question.result} />
+          ) : (
+            <ResultBars result={question.result} />
+          )}
           <p className="result-meta tabular">
             {question.result.responseCount} {translate(language, "responses")}
             <span aria-hidden="true"> · </span>
