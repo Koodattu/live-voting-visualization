@@ -1,8 +1,12 @@
-.git
-.env
-backups
-coverage
-data
-dist
-node_modules
-npm-debug.log*
+# Keep the build context limited to files copied by the Dockerfile.
+**
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.server.json
+!vite.config.ts
+!index.html
+!src
+!src/**
+!migrations
+!migrations/**

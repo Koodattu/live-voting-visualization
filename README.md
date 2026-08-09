@@ -19,7 +19,7 @@ Requirements: Node.js 24 or newer and npm.
 
 ```powershell
 Copy-Item .env.example .env
-npm install
+npm ci
 npm run dev
 ```
 
