@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { AdminSessionDetail } from "../../shared/contracts.js";
 import { apiRequest } from "../api.js";
 import { CommentGrid, ResultBars } from "../components/results.js";
-import { Button, InlineNotice, StatusPill } from "../components/ui.js";
+import { Button, ConfirmationDialog, InlineNotice, StatusPill } from "../components/ui.js";
+import { translate } from "../i18n.js";
 
 export function EndedPanel({
   session,
@@ -18,6 +19,7 @@ export function EndedPanel({
   const [joinName, setJoinName] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const duplicate = async () => {
@@ -41,7 +43,6 @@ export function EndedPanel({
   };
 
   const remove = async () => {
-    if (!window.confirm("Permanently delete this Voting Session?")) return;
     setBusy(true);
     setError(null);
     try {
@@ -63,6 +64,18 @@ export function EndedPanel({
 
   return (
     <main className="admin-content ended-page">
+      <ConfirmationDialog
+        open={confirmDelete}
+        title={translate("en", "deleteSessionTitle")}
+        description={translate("en", "deleteSessionBody")}
+        confirmLabel={translate("en", "deleteSession")}
+        danger
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          void remove();
+        }}
+      />
       <div className="admin-titlebar">
         <div>
           <button className="back-button" onClick={onBack}>
@@ -172,7 +185,7 @@ export function EndedPanel({
             <Button
               variant="danger"
               disabled={busy || confirmation.toLowerCase() !== session.joinName}
-              onClick={remove}
+              onClick={() => setConfirmDelete(true)}
             >
               Delete permanently
             </Button>

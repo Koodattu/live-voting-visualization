@@ -4,7 +4,8 @@ import type {
   PresenterAction,
 } from "../../shared/contracts.js";
 import { CommentGrid, ResultBars } from "../components/results.js";
-import { Button, InlineNotice, StatusPill } from "../components/ui.js";
+import { Button, ConfirmationDialog, InlineNotice, StatusPill } from "../components/ui.js";
+import { translate } from "../i18n.js";
 import { createSocket, type AppSocket } from "../socket.js";
 import { useJoinQrCode } from "../use-join-qr-code.js";
 
@@ -21,6 +22,7 @@ export function PresenterPanel({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const socketRef = useRef<AppSocket | null>(null);
   const qrCode = useJoinQrCode(session.joinName);
 
@@ -57,9 +59,8 @@ export function PresenterPanel({
 
   const command = (
     action: PresenterAction,
-    options: { value?: boolean; confirm?: string } = {},
+    options: { value?: boolean } = {},
   ) => {
-    if (options.confirm && !window.confirm(options.confirm)) return;
     const socket = socketRef.current;
     if (!socket) return;
     setBusy(true);
@@ -94,12 +95,23 @@ export function PresenterPanel({
     session.presentedPosition === null
       ? undefined
       : session.questions[session.presentedPosition];
-  const isOpen = current?.status === "open";
   const hasNext = current ? current.position + 1 < session.questions.length : false;
   const hasFeedback = session.questions.some((question) => question.type === "feedback");
 
   return (
     <main className="admin-content presenter-page">
+      <ConfirmationDialog
+        open={confirmEnd}
+        title={translate("en", "endSessionTitle")}
+        description={translate("en", "endSessionBody")}
+        confirmLabel={translate("en", "endSession")}
+        danger
+        onCancel={() => setConfirmEnd(false)}
+        onConfirm={() => {
+          setConfirmEnd(false);
+          command("end");
+        }}
+      />
       <div className="admin-titlebar presenter-titlebar">
         <div>
           <button className="back-button" onClick={onBack}>
@@ -198,18 +210,6 @@ export function PresenterPanel({
               >
                 Show first Question
               </Button>
-            ) : isOpen ? (
-              <Button
-                className="control-primary"
-                disabled={busy}
-                onClick={() =>
-                  command("close", {
-                    confirm: "Close this Question? Responses will become final.",
-                  })
-                }
-              >
-                Close voting
-              </Button>
             ) : (
               <div className="navigation-controls">
                 <Button
@@ -228,11 +228,7 @@ export function PresenterPanel({
               </div>
             )}
             <p className="control-help">
-              {isOpen
-                ? "Close voting before navigating or ending."
-                : current
-                  ? "Closed Questions stay final when revisited."
-                  : "Everyone is waiting in the Lobby."}
+              {translate("en", session.lockQuestions ? "lockQuestionsHelp" : "dontLockQuestionsHelp")}
             </p>
           </div>
 
@@ -275,12 +271,8 @@ export function PresenterPanel({
           <div className="control-panel__section control-panel__section--danger">
             <Button
               variant="danger"
-              disabled={busy || isOpen}
-              onClick={() =>
-                command("end", {
-                  confirm: "End this Voting Session? It cannot be restarted.",
-                })
-              }
+              disabled={busy}
+              onClick={() => setConfirmEnd(true)}
             >
               End Session
             </Button>

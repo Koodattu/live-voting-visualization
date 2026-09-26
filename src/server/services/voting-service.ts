@@ -39,6 +39,7 @@ interface SessionRow {
   join_name: string;
   title: string;
   language: SessionLanguage;
+  lock_questions: 0 | 1;
   status: SessionStatus;
   presented_position: number | null;
   furthest_presented_position: number;
@@ -394,6 +395,7 @@ export class VotingService {
     return {
       role: "admin",
       ...this.summary(session),
+      lockQuestions: session.lock_questions === 1,
       stateVersion: session.state_version,
       controlRevision: session.control_revision,
       displayTheme: session.display_theme,
@@ -519,14 +521,15 @@ export class VotingService {
       this.database
         .prepare(
           `INSERT INTO sessions
-            (id, join_name, title, language, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+            (id, join_name, title, language, lock_questions, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           sessionId,
           draft.joinName,
           draft.title,
           draft.language,
+          draft.lockQuestions ? 1 : 0,
           createdAt,
           createdAt,
         );
@@ -577,12 +580,12 @@ export class VotingService {
       this.database
         .prepare(
           `UPDATE sessions
-           SET join_name = ?, title = ?, language = ?, updated_at = ?,
+           SET join_name = ?, title = ?, language = ?, lock_questions = ?, updated_at = ?,
                control_revision = control_revision + 1,
                state_version = state_version + 1
            WHERE id = ?`,
         )
-        .run(draft.joinName, draft.title, draft.language, now(), sessionId);
+        .run(draft.joinName, draft.title, draft.language, draft.lockQuestions ? 1 : 0, now(), sessionId);
     });
 
     try {
@@ -764,8 +767,17 @@ export class VotingService {
         session.presented_position === null
           ? undefined
           : this.questionAt(session.id, session.presented_position);
-      const hasOpenQuestion = current?.status === "open";
       const timestamp = now();
+      const closeCurrentQuestion = () => {
+        if (current?.status !== "open") return;
+        this.database
+          .prepare(
+            `UPDATE questions
+             SET status = 'closed', closed_at = ?, participation_denominator = ?
+             WHERE id = ?`,
+          )
+          .run(timestamp, this.guestCount(session.id), current.id);
+      };
 
       switch (command.action) {
         case "open_first": {
@@ -798,61 +810,8 @@ export class VotingService {
             .run(session.id);
           break;
         }
-        case "close": {
-          if (!current || !hasOpenQuestion) {
-            throw new AppError(
-              "invalid_transition",
-              "There is no Open Question to close.",
-              409,
-            );
-          }
-          this.database
-            .prepare(
-              `UPDATE questions
-               SET status = 'closed', closed_at = ?, participation_denominator = ?
-               WHERE id = ?`,
-            )
-            .run(timestamp, this.guestCount(session.id), current.id);
-          break;
-        }
-        case "previous": {
-          if (hasOpenQuestion) {
-            throw new AppError(
-              "question_open",
-              "Close the Question before navigating.",
-              409,
-            );
-          }
-          if (!current || current.position === 0) {
-            throw new AppError(
-              "invalid_transition",
-              "There is no previous Question.",
-              409,
-            );
-          }
-          const previous = this.questionAt(session.id, current.position - 1);
-          if (!previous || previous.status !== "closed") {
-            throw new AppError(
-              "invalid_transition",
-              "The previous Question is unavailable.",
-              409,
-            );
-          }
-          this.database
-            .prepare(
-              "UPDATE sessions SET presented_position = ? WHERE id = ?",
-            )
-            .run(previous.position, session.id);
-          break;
-        }
+        case "previous":
         case "next": {
-          if (hasOpenQuestion) {
-            throw new AppError(
-              "question_open",
-              "Close the Question before navigating.",
-              409,
-            );
-          }
           if (!current) {
             throw new AppError(
               "invalid_transition",
@@ -860,58 +819,45 @@ export class VotingService {
               409,
             );
           }
-          const next = this.questionAt(session.id, current.position + 1);
-          if (!next) {
+          const target = this.questionAt(
+            session.id,
+            current.position + (command.action === "next" ? 1 : -1),
+          );
+          if (!target) {
             throw new AppError(
               "invalid_transition",
-              "There is no next Question.",
+              `There is no ${command.action} Question.`,
               409,
             );
           }
-          if (current.position < session.furthest_presented_position) {
-            if (next.status !== "closed") {
-              throw new AppError(
-                "invalid_transition",
-                "Questions must be shown in order.",
-                409,
-              );
-            }
+          // Only the presented Question accepts responses. In unlocked sessions,
+          // closed Questions reopen on revisit, preserving their existing responses.
+          closeCurrentQuestion();
+          if (target.status === "unshown" || session.lock_questions === 0) {
             this.database
               .prepare(
-                "UPDATE sessions SET presented_position = ? WHERE id = ?",
-              )
-              .run(next.position, session.id);
-          } else {
-            if (next.status !== "unshown") {
-              throw new AppError(
-                "invalid_transition",
-                "The next Question cannot be opened.",
-                409,
-              );
-            }
-            this.database
-              .prepare(
-                `UPDATE questions SET status = 'open', opened_at = ? WHERE id = ?`,
-              )
-              .run(timestamp, next.id);
-            this.database
-              .prepare(
-                `UPDATE sessions
-                 SET presented_position = ?, furthest_presented_position = ?
+                `UPDATE questions
+                 SET status = 'open', opened_at = COALESCE(opened_at, ?),
+                     closed_at = NULL, participation_denominator = NULL
                  WHERE id = ?`,
               )
-              .run(next.position, next.position, session.id);
+              .run(timestamp, target.id);
           }
+          this.database
+            .prepare(
+              `UPDATE sessions
+               SET presented_position = ?, furthest_presented_position = ?
+               WHERE id = ?`,
+            )
+            .run(
+              target.position,
+              Math.max(session.furthest_presented_position, target.position),
+              session.id,
+            );
           break;
         }
         case "end": {
-          if (hasOpenQuestion) {
-            throw new AppError(
-              "question_open",
-              "Close the Question before ending the session.",
-              409,
-            );
-          }
+          closeCurrentQuestion();
           this.database
             .prepare(
               `UPDATE sessions
@@ -1220,6 +1166,7 @@ export class VotingService {
       title: source.title,
       joinName,
       language: source.language,
+      lockQuestions: source.lock_questions === 1,
       questions: this.questions(source.id).map((question) => ({
         type: question.type,
         prompt: question.prompt,

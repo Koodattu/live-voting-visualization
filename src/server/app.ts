@@ -114,6 +114,7 @@ const draftSchema = {
     title: { type: "string", maxLength: 100 },
     joinName: { type: "string", maxLength: 24 },
     language: { type: "string", enum: ["en", "fi"] },
+    lockQuestions: { type: "boolean" },
     questions: {
       type: "array",
       maxItems: 100,
@@ -204,7 +205,6 @@ function isPresenterCommand(value: unknown): value is PresenterCommand {
     typeof value.requestId === "string" &&
     [
       "open_first",
-      "close",
       "previous",
       "next",
       "end",

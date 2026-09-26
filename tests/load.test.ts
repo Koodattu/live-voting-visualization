@@ -30,6 +30,7 @@ it("delivers synchronized updates within one second for 100 Participants", async
       title: "Load Session",
       joinName: "load-session",
       language: "en",
+      lockQuestions: true,
       questions: [
         {
           type: "single_choice",
@@ -137,15 +138,6 @@ it("delivers synchronized updates within one second for 100 Participants", async
     );
     await changedCounts;
 
-    const closed = await command(presenter, {
-      requestId: "load-close-first-0001",
-      action: "close",
-      expectedControlRevision: session.controlRevision,
-    });
-    expect(closed.ok).toBe(true);
-    if (!closed.ok) throw new Error(closed.error.message);
-    session = closed.data;
-    expect(session.questions[0]?.participationDenominator).toBe(100);
     const next = await command(presenter, {
       requestId: "load-next-0001",
       action: "next",
@@ -154,20 +146,15 @@ it("delivers synchronized updates within one second for 100 Participants", async
     expect(next.ok).toBe(true);
     if (!next.ok) throw new Error(next.error.message);
     session = next.data;
-    const closeSecond = await command(presenter, {
-      requestId: "load-close-second-0001",
-      action: "close",
-      expectedControlRevision: session.controlRevision,
-    });
-    expect(closeSecond.ok).toBe(true);
-    if (!closeSecond.ok) throw new Error(closeSecond.error.message);
-    session = closeSecond.data;
+    expect(session.questions[0]?.participationDenominator).toBe(100);
     const previous = await command(presenter, {
       requestId: "load-previous-0001",
       action: "previous",
       expectedControlRevision: session.controlRevision,
     });
     expect(previous.ok).toBe(true);
+    if (!previous.ok) throw new Error(previous.error.message);
+    expect(previous.data.questions[1]?.status).toBe("closed");
 
     participants[0]!.disconnect();
     const reconnect = connect(baseUrl, {

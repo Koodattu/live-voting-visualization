@@ -58,6 +58,7 @@ describe("HTTP and realtime integration", () => {
     });
     expect(createdResponse.statusCode).toBe(201);
     const draft = createdResponse.json<AdminSessionDetail>();
+    expect(draft.lockQuestions).toBe(true);
 
     const deleted = await application.app.inject({
       method: "DELETE",
@@ -147,7 +148,7 @@ describe("HTTP and realtime integration", () => {
     expect(privilegedSnapshots).toBe(0);
   });
 
-  it("synchronizes presenter, participant, and display while rejecting hostile events", async () => {
+  it.each([true, false])("synchronizes navigation and revisits with lockQuestions=%s while rejecting hostile events", async (lockQuestions) => {
     const config = await testConfig();
     application = await buildApplication(config);
     await application.app.listen({ host: "127.0.0.1", port: 0 });
@@ -172,12 +173,14 @@ describe("HTTP and realtime integration", () => {
         title: "Integration Session",
         joinName: "integration",
         language: "en",
+        lockQuestions,
         questions: [
           {
             type: "single_choice",
             prompt: "Ready?",
             options: [{ label: "Yes" }, { label: "No" }],
           },
+          { type: "feedback", prompt: "Any feedback?", options: [] },
         ],
       },
     });
@@ -194,6 +197,7 @@ describe("HTTP and realtime integration", () => {
     });
     expect(startedResponse.statusCode).toBe(200);
     const live = startedResponse.json<AdminSessionDetail>();
+    expect(live.lockQuestions).toBe(lockQuestions);
 
     const joinResponse = await application.app.inject({
       method: "POST",
@@ -323,16 +327,35 @@ describe("HTTP and realtime integration", () => {
     );
     expect(malformedPresenter.ok).toBe(false);
 
-    const participantClosed = waitForParticipantStatus(participant, "closed");
-    const closed = await presenterCommand(presenter, {
-      requestId: "integration-close-0001",
-      action: "close",
+    const participantAdvanced = waitForParticipantQuestion(participant, 1, "open");
+    const advanced = await presenterCommand(presenter, {
+      requestId: "integration-next-0001",
+      action: "next",
       expectedControlRevision: opened.data.controlRevision,
     });
-    expect(closed.ok).toBe(true);
-    const closedParticipant = await participantClosed;
-    expect(closedParticipant.currentQuestion?.status).toBe("closed");
-    expect(closedParticipant.currentQuestion).not.toHaveProperty("result");
+    expect(advanced.ok).toBe(true);
+    if (!advanced.ok) throw new Error(advanced.error.message);
+    expect((await participantAdvanced).currentQuestion?.position).toBe(1);
+    const revisitedStatus = lockQuestions ? "closed" : "open";
+    const participantRevisited = waitForParticipantQuestion(participant, 0, revisitedStatus);
+    const revisited = await presenterCommand(presenter, {
+      requestId: "integration-previous-0001",
+      action: "previous",
+      expectedControlRevision: advanced.data.controlRevision,
+    });
+    expect(revisited.ok).toBe(true);
+    const restored = await participantRevisited;
+    expect(restored.currentQuestion?.status).toBe(revisitedStatus);
+    expect(restored.currentQuestion).not.toHaveProperty("result");
+    expect(restored.ownResponse?.optionId).toBe(question.options[0]!.id);
+    const changed = await submitResponse(participant, {
+      requestId: "integration-change-0001",
+      questionId: question.id,
+      optionId: question.options[1]!.id,
+    });
+    expect(changed.ok).toBe(!lockQuestions);
+    if (changed.ok) expect(changed.data.ownResponse?.optionId).toBe(question.options[1]!.id);
+    else expect(changed.error.code).toBe("question_not_open");
   });
 });
 
@@ -404,8 +427,9 @@ function waitForDisplayResponses(
   });
 }
 
-function waitForParticipantStatus(
+function waitForParticipantQuestion(
   socket: TestSocket,
+  position: number,
   status: "open" | "closed" | "unshown",
 ): Promise<ParticipantSnapshot> {
   return new Promise((resolve, reject) => {
@@ -418,6 +442,7 @@ function waitForParticipantStatus(
     ) => {
       if (
         snapshot.role === "participant" &&
+        snapshot.currentQuestion?.position === position &&
         snapshot.currentQuestion?.status === status
       ) {
         clearTimeout(timer);

@@ -102,6 +102,10 @@ export function normalizeDraftInput(
   if (language !== "en" && language !== "fi") {
     throw new AppError("invalid_language", "Choose Finnish or English.");
   }
+  const lockQuestions = input.lockQuestions === undefined ? true : input.lockQuestions;
+  if (typeof lockQuestions !== "boolean") {
+    throw new AppError("invalid_input", "Choose whether to lock Questions.");
+  }
   if (!Array.isArray(input.questions)) {
     throw new AppError("invalid_question", "Questions must be a list.");
   }
@@ -138,6 +142,7 @@ export function normalizeDraftInput(
     title: cleanText(input.title, "Title", 100),
     joinName: normalizeJoinName(input.joinName),
     language,
+    lockQuestions,
     questions,
   };
 }

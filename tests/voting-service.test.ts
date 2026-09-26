@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DraftSessionInput, PresenterAction } from "../src/shared/contracts.js";
 import { AdminAuth } from "../src/server/auth/admin-auth.js";
 import { openDatabase } from "../src/server/db/database.js";
 import { AppError } from "../src/server/errors.js";
@@ -27,6 +28,7 @@ describe("VotingService", () => {
         title: "Formula-safe event",
         joinName: "event",
         language: "en",
+        lockQuestions: true,
         questions: [
           {
             type: "single_choice",
@@ -123,8 +125,8 @@ describe("VotingService", () => {
       });
 
       session = service.runPresenterCommand(session.id, {
-        requestId: requestId("close-first"),
-        action: "close",
+        requestId: requestId("next-second"),
+        action: "next",
         expectedControlRevision: session.controlRevision,
       });
       expect(session.questions[0]?.participationDenominator).toBe(2);
@@ -135,17 +137,7 @@ describe("VotingService", () => {
       expect(service.adminSnapshot(session.id).joinedCount).toBe(3);
       expect(service.adminSnapshot(session.id).questions[0]?.result?.participationDenominator).toBe(2);
 
-      session = service.runPresenterCommand(session.id, {
-        requestId: requestId("next-second"),
-        action: "next",
-        expectedControlRevision: session.controlRevision,
-      });
       expect(session.questions[1]?.status).toBe("open");
-      session = service.runPresenterCommand(session.id, {
-        requestId: requestId("close-second"),
-        action: "close",
-        expectedControlRevision: session.controlRevision,
-      });
       session = service.runPresenterCommand(session.id, {
         requestId: requestId("previous-first"),
         action: "previous",
@@ -176,11 +168,6 @@ describe("VotingService", () => {
         action: "set_comment_wall",
         expectedControlRevision: session.controlRevision,
         value: false,
-      });
-      session = service.runPresenterCommand(session.id, {
-        requestId: requestId("close-feedback"),
-        action: "close",
-        expectedControlRevision: session.controlRevision,
       });
       session = service.runPresenterCommand(session.id, {
         requestId: requestId("end"),
@@ -218,6 +205,7 @@ describe("VotingService", () => {
         title: "Reused name",
         joinName: "event",
         language: "en",
+        lockQuestions: true,
         questions: [
           {
             type: "single_choice",
@@ -247,12 +235,14 @@ describe("VotingService", () => {
         title: "Concurrency",
         joinName: "concurrency",
         language: "fi",
+        lockQuestions: true,
         questions: [
           {
             type: "single_choice",
             prompt: "Kysymys",
             options: [{ label: "Kyllä" }, { label: "Ei" }],
           },
+          { type: "feedback", prompt: "Palaute", options: [] },
         ],
       });
       session = service.startSession(
@@ -278,8 +268,8 @@ describe("VotingService", () => {
         }),
       ).toThrow("Presenter state changed in another browser");
       session = service.runPresenterCommand(session.id, {
-        requestId: requestId("close"),
-        action: "close",
+        requestId: requestId("next"),
+        action: "next",
         expectedControlRevision: session.controlRevision,
       });
       expect(() =>
@@ -304,6 +294,119 @@ describe("VotingService", () => {
       expect(new AdminAuth(database, "second-password").isAuthenticated(token)).toBe(false);
       original.invalidate(token);
       expect(original.isAuthenticated(token)).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+
+  it.each([true, false])("preserves responses and applies the locking policy on every revisit (lockQuestions=%s)", async (lockQuestions) => {
+    const { service, database, close } = await createService();
+    try {
+      const input: DraftSessionInput = {
+        title: "Revisits",
+        joinName: "revisits",
+        language: "en",
+        lockQuestions: !lockQuestions,
+        questions: [
+          { type: "single_choice", prompt: "Choose", options: [{ label: "A" }, { label: "B" }] },
+          { type: "feedback", prompt: "Comment", options: [] },
+        ],
+      };
+      let session = service.createDraft(input);
+      session = service.updateDraft(session.id, { ...input, lockQuestions }, session.controlRevision);
+      expect(service.adminSnapshot(session.id).lockQuestions).toBe(lockQuestions);
+      session = service.startSession(session.id, session.controlRevision, requestId("start-revisits"));
+      expect(() => service.updateDraft(session.id, input, session.controlRevision)).toThrow("cannot be changed");
+      const guest = service.joinSession("revisits", undefined).credentials!;
+      let sequence = 0;
+      const command = (action: PresenterAction) => {
+        const command = { action, requestId: requestId(`revisit-${sequence++}`), expectedControlRevision: session.controlRevision };
+        session = service.runPresenterCommand(session.id, command);
+        // Retrying navigation must not advance, close, or reopen a second time.
+        expect(service.runPresenterCommand(session.id, command)).toEqual(session);
+      };
+      command("open_first");
+      const choice = session.questions[0]!;
+      const feedback = session.questions[1]!;
+      const vote = (optionIndex: number) => service.submitResponse(session.id, guest.guestId, {
+        requestId: requestId(`vote-${sequence++}`),
+        questionId: choice.id,
+        optionId: choice.options[optionIndex]!.id,
+      });
+      const comment = (content: string) => service.submitResponse(session.id, guest.guestId, {
+        requestId: requestId(`comment-${sequence++}`), questionId: feedback.id, content,
+      });
+      vote(0);
+      const originalVote = service.participantSnapshot(session.id, guest.guestId).ownResponse!;
+      const originalOpenTime = session.questions[0]!.openedAt;
+      expect(() => command("previous")).toThrow("no previous Question");
+      expect(service.adminSnapshot(session.id).questions[0]!.status).toBe("open");
+      command("next");
+      expect(session.questions[0]!.participationDenominator).toBe(1);
+      expect(service.displaySnapshot(session.id).previousQuestion?.result?.responseCount).toBe(1);
+      expect(() => vote(1)).toThrow("no longer accepting responses");
+      comment("Original comment");
+      const originalComment = service.participantSnapshot(session.id, guest.guestId).ownResponse!;
+      service.joinSession("revisits", undefined);
+      expect(() => command("next")).toThrow("no next Question");
+      expect(service.adminSnapshot(session.id).questions[1]!.status).toBe("open");
+      command("previous");
+      expect(session.questions[0]!.status).toBe(lockQuestions ? "closed" : "open");
+      expect(session.questions[0]!.openedAt).toBe(originalOpenTime);
+      expect(service.joinSession("revisits", guest).snapshot.ownResponse).toEqual(originalVote);
+      expect(() => comment("Offscreen comment")).toThrow("no longer accepting responses");
+      if (lockQuestions) {
+        expect(() => vote(1)).toThrow("no longer accepting responses");
+        expect(session.questions[0]!.result!.participationDenominator).toBe(1);
+      } else {
+        expect(session.questions[0]!.closedAt).toBeNull();
+        expect(session.questions[0]!.result!.participationDenominator).toBe(2);
+        expect(vote(1).ownResponse?.createdAt).toBe(originalVote.createdAt);
+        expect(service.adminSnapshot(session.id).questions[0]!.result!.options.map((option) => option.count)).toEqual([0, 1]);
+      }
+      command("next");
+      expect(service.participantSnapshot(session.id, guest.guestId).ownResponse).toEqual(originalComment);
+      if (lockQuestions) expect(() => comment("Edited comment")).toThrow("no longer accepting responses");
+      else expect(comment("Edited comment").ownResponse?.createdAt).toBe(originalComment.createdAt);
+      expect(database.prepare("SELECT count(*) AS count FROM questions WHERE session_id = ? AND status = 'open'").get(session.id)).toEqual({ count: lockQuestions ? 0 : 1 });
+      command("end");
+      const results = service.participantSnapshot(session.id, guest.guestId).results;
+      expect(results).toHaveLength(2);
+      expect(results[1]!.comments[0]!.content).toBe(lockQuestions ? "Original comment" : "Edited comment");
+      expect(session.questions.every((question) => question.status === "closed")).toBe(true);
+      expect(() => vote(0)).toThrow("no longer accepting responses");
+      expect(() => comment("Too late")).toThrow("no longer accepting responses");
+      const copy = service.duplicateEndedSession(session.id, "revisit-copy");
+      expect(copy.lockQuestions).toBe(lockQuestions);
+      expect(copy.questions.every((question) => question.status === "unshown")).toBe(true);
+    } finally {
+      await close();
+    }
+  });
+
+  it.each([true, false])("ends from the Lobby or an Open Question without presenting later Questions (lockQuestions=%s)", async (lockQuestions) => {
+    const { service, close } = await createService();
+    try {
+      for (const openFirst of [true, false]) {
+        let session = service.createDraft({
+          title: "End early", joinName: `end-early-${openFirst}`, language: "en", lockQuestions,
+          questions: [
+            { type: "single_choice", prompt: "First", options: [{ label: "A" }, { label: "B" }] },
+            { type: "feedback", prompt: "Unshown", options: [] },
+          ],
+        });
+        session = service.startSession(session.id, session.controlRevision, requestId("early-start"));
+        if (openFirst) session = service.runPresenterCommand(session.id, {
+          action: "open_first", requestId: requestId("early-open"), expectedControlRevision: session.controlRevision,
+        });
+        session = service.runPresenterCommand(session.id, {
+          action: "end", requestId: requestId("early-end"), expectedControlRevision: session.controlRevision,
+        });
+        expect(session.status).toBe("ended");
+        expect(session.questions[1]!.status).toBe("unshown");
+        expect(service.participantSnapshot(session.id, null).results).toHaveLength(openFirst ? 1 : 0);
+        expect(service.displaySnapshot(session.id).currentQuestion?.status ?? null).toBe(openFirst ? "closed" : null);
+      }
     } finally {
       await close();
     }

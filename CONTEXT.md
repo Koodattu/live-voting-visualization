@@ -5,7 +5,7 @@ The domain of running anonymous, presenter-led voting sessions for a live audien
 ## Language
 
 **Voting Session**:
-A presenter-led live activity containing an ordered set of questions and one current state shared by its participants. Each voting session is controlled independently from every other session.
+A presenter-led live activity containing an ordered set of questions and one current state shared by its participants. Each voting session is controlled independently from every other session. Its draft-only Question locking setting determines whether questions lock when the presenter leaves them (the default) or reopen whenever revisited.
 _Avoid_: Event, poll
 
 **Draft Session**:
@@ -21,7 +21,7 @@ The initial state of a live session before its first question opens. Participant
 _Avoid_: Waiting state, QR screen
 
 **Ended Session**:
-A voting session that the presenter has permanently finished while no question was open. It is absent from the homepage but its Session Results remain public to anyone with its Join Name. Session Results include every presented question; any unshown questions remain available only to the presenter. All questions, guest identities, and responses remain stored until explicit deletion. The session cannot be restarted, but its questions may be duplicated into a new draft session.
+A voting session that the presenter has permanently finished, automatically closing any open question. It is absent from the homepage but its Session Results remain public to anyone with its Join Name. Session Results include every presented question; any unshown questions remain available only to the presenter. All questions, guest identities, and responses remain stored until explicit deletion. The session cannot be restarted, but its questions may be duplicated into a new draft session.
 _Avoid_: Inactive session
 
 **Presenter**:
@@ -73,7 +73,7 @@ The presented question currently accepting participant input. A voting session h
 _Avoid_: Current question, active question
 
 **Closed Question**:
-A question that permanently no longer accepts participant input. The presenter may revisit it but cannot reopen it; during a live session, the participant view shows it read-only without results.
+A previously presented question that is not accepting participant input. With Question locking enabled, it stays permanently closed and read-only when revisited. With locking disabled, it reopens on revisit. All presented questions are permanently closed when the session ends.
 _Avoid_: Previous question
 
 **Option**:
@@ -81,11 +81,11 @@ One selectable choice belonging to a single-choice question.
 _Avoid_: Answer, choice
 
 **Vote**:
-A participant's selected option for a single-choice question. It may be changed while that question is open, with only the latest selection stored and counted, and becomes final when the question closes.
+A participant's selected option for a single-choice question. It may be changed while that question is open, with only the latest selection stored and counted, and becomes final when the question locks or the session ends.
 _Avoid_: Answer, response
 
 **Result**:
-The aggregate distribution of votes across a single-choice question's options, expressed as percentages of votes cast and as raw counts. While the question is open, participation compares responses with Guest Identities joined so far. Closing freezes the participation denominator at the Guest Identities joined by that moment and makes the Result final.
+The aggregate distribution of votes across a single-choice question's options, expressed as percentages of votes cast and as raw counts. While the question is open, participation compares responses with Guest Identities joined so far. Closing snapshots the participation denominator at the Guest Identities joined by that moment. Reopening an unlocked question uses the current joined count again. Results become final when a question locks or the session ends.
 _Avoid_: Chart, votes
 
 **Session Results**:
@@ -93,7 +93,7 @@ The public end-state collection for a voting session. It contains the final Resu
 _Avoid_: Complete results, result history
 
 **Comment**:
-A participant's anonymous plain-text response to a feedback question, limited to 160 characters. It appears automatically on the comment wall without moderation, may be changed while the question is open with only the latest text stored, and becomes final when the question closes.
+A participant's anonymous plain-text response to a feedback question, limited to 160 characters. It appears automatically on the comment wall without moderation, may be changed while the question is open with only the latest text stored, and becomes final when the question locks or the session ends.
 _Avoid_: Vote, message, chat
 
 **Comment Wall**:
@@ -105,7 +105,7 @@ The password-protected workspace where a presenter prepares voting sessions and 
 _Avoid_: Admin view
 
 **Presenter Controls**:
-The live-session controls within the Admin Panel used to start and end the session, close the open question, move Previous or Next through adjacent ordered questions, and hide or reveal the comment wall. Previous, Next, and End are unavailable while a question is open.
+The live-session controls within the Admin Panel used to start and end the session, move Previous or Next through adjacent ordered questions, and hide or reveal the comment wall. Navigation automatically closes the departing question and applies the session's Question locking setting without confirmation. End automatically closes any open question after an in-app confirmation.
 _Avoid_: Presenter view, presenter mode
 
 **Presentation Display**:

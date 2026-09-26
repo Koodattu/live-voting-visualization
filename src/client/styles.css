@@ -171,6 +171,42 @@ fieldset {
   border: 0;
 }
 
+.confirmation-dialog {
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 28px;
+  border: 1px solid var(--divider);
+  border-radius: 20px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-hover);
+}
+
+.confirmation-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.confirmation-dialog h2 {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.confirmation-dialog p {
+  margin-top: 16px;
+}
+
+.confirmation-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+body:has(.confirmation-dialog[open]) {
+  overflow: hidden;
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }

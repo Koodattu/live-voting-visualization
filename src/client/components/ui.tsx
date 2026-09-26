@@ -1,9 +1,66 @@
-import type {
-  ButtonHTMLAttributes,
-  HTMLAttributes,
-  ReactNode,
+import {
+  useEffect,
+  useId,
+  useRef,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type ReactNode,
 } from "react";
 import { Link } from "react-router";
+import { translate } from "../i18n.js";
+
+export function ConfirmationDialog({
+  open,
+  title,
+  description,
+  confirmLabel,
+  danger = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !open) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="confirmation-dialog"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h2 id={titleId}>{title}</h2>
+      <p id={descriptionId}>{description}</p>
+      <div className="confirmation-dialog__actions">
+        <Button type="button" variant="secondary" autoFocus onClick={onCancel}>
+          {translate("en", "cancel")}
+        </Button>
+        <Button type="button" variant={danger ? "danger" : "primary"} onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </div>
+    </dialog>
+  );
+}
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (

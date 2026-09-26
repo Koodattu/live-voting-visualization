@@ -5,16 +5,18 @@ import type {
   DraftSessionInput,
 } from "../../shared/contracts.js";
 import { apiRequest } from "../api.js";
-import { Button, InlineNotice } from "../components/ui.js";
+import { Button, ConfirmationDialog, InlineNotice } from "../components/ui.js";
+import { translate } from "../i18n.js";
 
 function emptyDraft(session?: AdminSessionDetail): DraftSessionInput {
   if (!session) {
-    return { title: "", joinName: "", language: "en", questions: [] };
+    return { title: "", joinName: "", language: "en", lockQuestions: true, questions: [] };
   }
   return {
     title: session.title,
     joinName: session.joinName,
     language: session.language,
+    lockQuestions: session.lockQuestions,
     questions: session.questions.map((question) => ({
       type: question.type,
       prompt: question.prompt,
@@ -38,6 +40,7 @@ export function SessionEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"start" | "delete" | null>(null);
 
   useEffect(() => {
     setDraft(emptyDraft(session));
@@ -132,9 +135,6 @@ export function SessionEditor({
   };
 
   const start = async () => {
-    if (!window.confirm("Start this Voting Session? Questions cannot be changed afterward.")) {
-      return;
-    }
     try {
       const savedSession = await save();
       setBusy(true);
@@ -161,7 +161,7 @@ export function SessionEditor({
   };
 
   const removeDraft = async () => {
-    if (!session || !window.confirm("Delete this Draft Session?")) return;
+    if (!session) return;
     setBusy(true);
     try {
       await apiRequest<void>(`/api/admin/sessions/${session.id}`, {
@@ -180,6 +180,19 @@ export function SessionEditor({
 
   return (
     <main className="admin-content editor-page">
+      <ConfirmationDialog
+        open={pendingAction !== null}
+        title={translate("en", pendingAction === "delete" ? "deleteDraftTitle" : "startSessionTitle")}
+        description={translate("en", pendingAction === "delete" ? "deleteDraftBody" : "startSessionBody")}
+        confirmLabel={translate("en", pendingAction === "delete" ? "deleteDraft" : "startSession")}
+        danger={pendingAction === "delete"}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => {
+          setPendingAction(null);
+          if (pendingAction === "delete") void removeDraft();
+          else void start();
+        }}
+      />
       <div className="admin-titlebar">
         <div>
           <button className="back-button" onClick={onBack}>
@@ -190,14 +203,14 @@ export function SessionEditor({
         </div>
         <div className="admin-titlebar__actions">
           {session && (
-            <Button variant="danger" disabled={busy} onClick={removeDraft}>
+            <Button variant="danger" disabled={busy} onClick={() => setPendingAction("delete")}>
               Delete Draft
             </Button>
           )}
-          <Button variant="secondary" disabled={busy} onClick={() => void save()}>
+          <Button variant="secondary" disabled={busy} onClick={() => void save().catch(() => undefined)}>
             {busy ? "Saving…" : "Save Draft"}
           </Button>
-          <Button disabled={busy || draft.questions.length === 0} onClick={start}>
+          <Button disabled={busy || draft.questions.length === 0} onClick={() => setPendingAction("start")}>
             Start Session
           </Button>
         </div>
@@ -265,6 +278,28 @@ export function SessionEditor({
                 </button>
               ))}
             </div>
+          </fieldset>
+          <fieldset className="language-field">
+            <legend>{translate("en", "questionLocking")}</legend>
+            <div className="segmented-control">
+              {[true, false].map((lockQuestions) => (
+                <button
+                  type="button"
+                  className={draft.lockQuestions === lockQuestions ? "is-active" : ""}
+                  aria-pressed={draft.lockQuestions === lockQuestions}
+                  onClick={() => {
+                    setDraft((current) => ({ ...current, lockQuestions }));
+                    setSaved(false);
+                  }}
+                  key={String(lockQuestions)}
+                >
+                  {translate("en", lockQuestions ? "lockQuestions" : "dontLockQuestions")}
+                </button>
+              ))}
+            </div>
+            <p className="control-help">
+              {translate("en", draft.lockQuestions ? "lockQuestionsHelp" : "dontLockQuestionsHelp")}
+            </p>
           </fieldset>
         </div>
       </section>
@@ -485,10 +520,10 @@ export function SessionEditor({
       </section>
 
       <div className="editor-footer">
-        <Button variant="secondary" disabled={busy} onClick={() => void save()}>
+        <Button variant="secondary" disabled={busy} onClick={() => void save().catch(() => undefined)}>
           Save Draft
         </Button>
-        <Button disabled={busy || draft.questions.length === 0} onClick={start}>
+        <Button disabled={busy || draft.questions.length === 0} onClick={() => setPendingAction("start")}>
           Start Session
         </Button>
       </div>

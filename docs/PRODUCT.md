@@ -25,7 +25,8 @@ Hiding live Results from the Participant View is a normal UX rule, not an access
 
 ## Session setup and discovery
 
-- A Draft Session has a title, Finnish or English Session Language, a unique Join Name, and an ordered Question set.
+- A Draft Session has a title, Finnish or English Session Language, a unique Join Name, an ordered Question set, and a Question locking setting.
+- **Lock questions** (the default, including existing sessions) makes responses final when the Presenter leaves a Question. **Don’t lock questions** allows Participants to edit responses whenever the Presenter revisits the Question. The setting is editable only in a Draft and is preserved when duplicating a session.
 - Join Names are Presenter-chosen, 3–24 characters, case-insensitive, normalized to lowercase, and limited to ASCII `a-z`, `0-9`, and hyphens. System route names are reserved.
 - A Join Name remains unavailable until its session is explicitly deleted.
 - Questions and Options may be edited and reordered only while the session is a Draft.
@@ -40,7 +41,7 @@ Hiding live Results from the Participant View is a normal UX rule, not an access
 - Contains 2–5 short, ordered Options.
 - Presets may create Yes/No or five-point agreement Options, but they use the same generic model as custom Options.
 - A Participant selects exactly one Option and may change it while the Question is open.
-- Only the latest Vote is stored and counted. It becomes final when the Question closes.
+- Only the latest Vote is stored and counted. It becomes final when the Presenter leaves a Question with locking enabled, or when the session ends.
 
 ### Feedback Question
 
@@ -56,11 +57,10 @@ Multi-select, ranking, numeric rating, long text, and additional Question types 
 
 1. **Lobby:** the Presentation Display shows the title, Join Name, direct link, QR code, and cumulative number of joined Guest Identities. Participant Views wait in sync.
 2. **Open Question:** from the Lobby, the Presenter opens the first Question. Participant Views show response controls without Results. The Presentation Display shows the Question and live Result or Comment Wall.
-3. **Close:** after a brief confirmation, the Presenter explicitly and irreversibly closes the Question. Responses become final while the same Question remains large for discussion.
-4. **Navigate:** Previous and Next move exactly one position through configured order. Selecting an already presented Question shows it Closed; it never reopens. From the furthest presented Closed Question, Next opens the adjacent Unshown Question immediately. Navigation never skips intervening Questions.
-5. **End:** after a confirmation, the Presenter may end once no Question is open, including before every configured Question was shown. Ending is permanent.
+3. **Navigate:** Previous and Next move exactly one position through configured order, immediately closing the departing Question without a confirmation or separate action. With locking enabled, revisited Questions remain Closed and read-only. With locking disabled, revisited Questions reopen with their saved responses available to edit. Selecting an Unshown Question opens it immediately. Navigation never skips intervening Questions.
+4. **End:** after an in-app confirmation, the Presenter may end from the Lobby or any Question, including before every configured Question was shown. Any Open Question closes automatically and all responses become final. Ending is permanent.
 
-Previous, Next, and End are disabled and rejected by the server while a Question is Open; the Presenter must Close it first. All Participant Views and Presentation Displays follow Presenter navigation. During a Live Session, a revisited Closed Question remains read-only in Participant Views and does not reveal Results there. Refreshing or reconnecting restores the Guest Identity's latest Vote or Comment for the Open or revisited Question.
+Only the currently presented Open Question accepts responses. All Participant Views and Presentation Displays follow Presenter navigation. During a Live Session, Participant Views do not reveal Results. Refreshing or reconnecting restores the Guest Identity's latest Vote or Comment for the Open or revisited Question. Start, End, and deletion confirmations use styled in-app dialogs with Cancel and Escape support; question navigation has no confirmation.
 
 Multiple authenticated Admin browsers may control one Live Session. Presenter commands carry an expected control revision, and stale or duplicate transitions are rejected. Vote and Comment submissions are independent idempotent upserts for one Guest Identity and Question; they validate that the Question is Open but do not contend on the control revision.
 
@@ -68,8 +68,8 @@ Multiple authenticated Admin browsers may control one Live Session. Presenter co
 
 - Single-choice Results use one horizontal bar-chart design.
 - Every bar shows percentage prominently and raw Vote count secondarily. The Question also shows the response count.
-- Percentages use Votes cast as their denominator. While a Question is Open, participation compares responses with Guest Identities joined so far. Closing freezes that denominator, so later arrivals do not reduce past response rates.
-- The current Question occupies the main visual focus. The immediately previous Closed Question and its final Result remain in a compact, muted strip above it.
+- Percentages use Votes cast as their denominator. While a Question is Open, participation compares responses with Guest Identities joined so far. Leaving a Question snapshots that denominator, so later arrivals do not reduce past response rates. Reopening an unlocked Question uses the current joined count again.
+- The current Question occupies the main visual focus. The immediately previous Closed Question and its latest Result remain in a compact, muted strip above it.
 - Advancing moves the current Question gently into the previous strip while the next Question enters the main position.
 - The Presenter may toggle all Presentation Displays for the Voting Session between Light and Dark themes. Participant and Admin views follow their own device preferences.
 - Dynamic numbers use fixed-width numerals, headings wrap cleanly, and motion respects reduced-motion preferences.

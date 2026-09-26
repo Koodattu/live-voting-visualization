@@ -18,6 +18,7 @@ export interface DraftSessionInput {
   title: string;
   joinName: string;
   language: SessionLanguage;
+  lockQuestions: boolean;
   questions: DraftQuestionInput[];
 }
 
@@ -127,6 +128,7 @@ export interface AdminSessionSummary {
 
 export interface AdminSessionDetail extends AdminSessionSummary {
   role: "admin";
+  lockQuestions: boolean;
   stateVersion: number;
   controlRevision: number;
   displayTheme: DisplayTheme;
@@ -147,7 +149,6 @@ export interface LiveSessionSummary {
 
 export type PresenterAction =
   | "open_first"
-  | "close"
   | "previous"
   | "next"
   | "end"
