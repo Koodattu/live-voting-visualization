@@ -10,6 +10,7 @@ export interface AppConfig {
   databasePath: string;
   host: string;
   logLevel: string;
+  openaiApiKey?: string;
   migrationsDirectory: string;
   port: number;
   publicOrigin: string;
@@ -66,6 +67,7 @@ export function readConfig(overrides: Partial<AppConfig> = {}): AppConfig {
           ),
     host: overrides.host ?? process.env.HOST ?? "0.0.0.0",
     logLevel: overrides.logLevel ?? process.env.LOG_LEVEL ?? "info",
+    openaiApiKey: overrides.openaiApiKey ?? process.env.OPENAI_API_KEY?.trim(),
     migrationsDirectory: resolve(
       overrides.migrationsDirectory ?? "./migrations",
     ),

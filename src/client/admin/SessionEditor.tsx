@@ -10,13 +10,14 @@ import { translate } from "../i18n.js";
 
 function emptyDraft(session?: AdminSessionDetail): DraftSessionInput {
   if (!session) {
-    return { title: "", joinName: "", language: "en", lockQuestions: true, questions: [] };
+    return { title: "", joinName: "", language: "en", lockQuestions: true, aiRecapEnabled: false, questions: [] };
   }
   return {
     title: session.title,
     joinName: session.joinName,
     language: session.language,
     lockQuestions: session.lockQuestions,
+    aiRecapEnabled: session.aiRecapEnabled,
     questions: session.questions.map((question) => ({
       type: question.type,
       prompt: question.prompt,
@@ -300,6 +301,26 @@ export function SessionEditor({
             <p className="control-help">
               {translate("en", draft.lockQuestions ? "lockQuestionsHelp" : "dontLockQuestionsHelp")}
             </p>
+          </fieldset>
+          <fieldset className="language-field">
+            <legend>{translate("en", "aiRecap")}</legend>
+            <div className="segmented-control">
+              {[false, true].map((aiRecapEnabled) => (
+                <button type="button" key={String(aiRecapEnabled)}
+                  className={draft.aiRecapEnabled === aiRecapEnabled ? "is-active" : ""}
+                  aria-pressed={draft.aiRecapEnabled === aiRecapEnabled}
+                  onClick={() => {
+                    setDraft((current) => ({ ...current, aiRecapEnabled }));
+                    setSaved(false);
+                  }}>
+                  {translate("en", aiRecapEnabled ? "recapEnabled" : "recapDisabled")}
+                </button>
+              ))}
+            </div>
+            <p className="control-help">{translate("en", "recapHelp")}</p>
+            {draft.aiRecapEnabled && session?.aiRecapAvailable === false && (
+              <p className="control-help">{translate("en", "recapSetup")}</p>
+            )}
           </fieldset>
         </div>
       </section>

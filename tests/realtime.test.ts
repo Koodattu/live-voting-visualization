@@ -1,6 +1,6 @@
 import type { AddressInfo } from "node:net";
 import { io as connect, type Socket } from "socket.io-client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   AdminSessionDetail,
   ClientToServerEvents,
@@ -24,6 +24,52 @@ describe("HTTP and realtime integration", () => {
     clients.length = 0;
     if (application) await application.app.close();
     application = undefined;
+  });
+
+  it("broadcasts a pending and completed recap, restores it on reconnect, and restricts retries to presenters", async () => {
+    let resolveRecap!: (content: { headline: string; summary: string; highlights: string[]; chart: null }) => void;
+    const generate = vi.fn(() => new Promise<{ headline: string; summary: string; highlights: string[]; chart: null }>((resolve) => { resolveRecap = resolve; }));
+    const config = await testConfig();
+    application = await buildApplication(config, generate);
+    await application.app.listen({ host: "127.0.0.1", port: 0 });
+    const baseUrl = `http://127.0.0.1:${(application.app.server.address() as AddressInfo).port}`;
+    const login = await application.app.inject({ method: "POST", url: "/api/admin/login", payload: { password: config.adminPassword } });
+    const cookie = String(login.headers["set-cookie"]).split(";")[0]!;
+    const created = await application.app.inject({
+      method: "POST", url: "/api/admin/sessions", headers: { cookie },
+      payload: { title: "Recap", joinName: "recap-session", language: "en", aiRecapEnabled: true,
+        questions: [{ type: "single_choice", prompt: "Ready?", options: [{ label: "Yes" }, { label: "No" }] }] },
+    });
+    expect(created.statusCode).toBe(201);
+    const draft = created.json<AdminSessionDetail>();
+    expect(draft.aiRecapEnabled).toBe(true);
+    let session = application.service.startSession(draft.id, draft.controlRevision, "recap-start-0001");
+    const presenter = connect(baseUrl, { forceNew: true, reconnection: false, transports: ["websocket"], extraHeaders: { Cookie: cookie } }) as TestSocket;
+    const display = connect(baseUrl, { forceNew: true, reconnection: false, transports: ["websocket"] }) as TestSocket;
+    clients.push(presenter, display);
+    await Promise.all([waitForConnection(presenter), waitForConnection(display)]);
+    await subscribe(presenter, { joinName: session.joinName, role: "admin" });
+    await subscribe(display, { joinName: session.joinName, role: "display" });
+    const observed: DisplaySnapshot[] = [];
+    display.on("session:snapshot", (snapshot) => { if (snapshot.role === "display") observed.push(snapshot); });
+    const opened = await presenterCommand(presenter, { requestId: "recap-open-0001", action: "open_first", expectedControlRevision: session.controlRevision });
+    if (!opened.ok) throw new Error(opened.error.message);
+    session = opened.data;
+    const next = { requestId: "recap-next-0001", action: "next" as const, expectedControlRevision: session.controlRevision };
+    const pending = await presenterCommand(presenter, next);
+    expect(pending.ok && pending.data.recap.status).toBe("generating");
+    await presenterCommand(presenter, next);
+    await vi.waitFor(() => expect(observed.some((snapshot) => snapshot.recap?.status === "generating")).toBe(true));
+    expect(generate).toHaveBeenCalledTimes(1);
+    const unauthorized = await presenterCommand(display, { requestId: "recap-retry-0001", action: "retry_recap", expectedControlRevision: session.controlRevision });
+    expect(unauthorized).toMatchObject({ ok: false, error: { code: "admin_required" } });
+    resolveRecap({ headline: "No responses yet", summary: "There is not enough evidence to describe the audience’s pulse.", highlights: [], chart: null });
+    await vi.waitFor(() => expect(observed.at(-1)?.recap?.status).toBe("ready"));
+    const restored = await subscribe(display, { joinName: session.joinName, role: "display" });
+    expect(restored.ok && restored.data.role === "display" && restored.data.recap?.status).toBe("ready");
+    const http = await application.app.inject({ method: "GET", url: `/api/public/sessions/${session.joinName}/display` });
+    expect(http.json<DisplaySnapshot>().recap?.status).toBe("ready");
+    expect(generate).toHaveBeenCalledTimes(1);
   });
 
   it("protects admin routes and accepts an explicitly confirmed Draft deletion", async () => {

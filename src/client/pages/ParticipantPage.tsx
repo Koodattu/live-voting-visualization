@@ -180,6 +180,7 @@ export function ParticipantPage() {
           title={snapshot.title}
           language={snapshot.language}
           results={snapshot.results}
+          recap={snapshot.recap}
         />
       </PageShell>
     );
@@ -194,7 +195,13 @@ export function ParticipantPage() {
       <header className="participant-header">
         <span className="participant-header__session">{snapshot.title}</span>
       </header>
-      {!question ? (
+      {snapshot.recapVisible ? (
+        <main className="participant-stage participant-lobby">
+          <span className="eyebrow">{translate(language, "audiencePulse")}</span>
+          <h1>{translate(language, "recapParticipantTitle")}</h1>
+          <p>{translate(language, "recapParticipantBody")}</p>
+        </main>
+      ) : !question ? (
         <main className="participant-stage participant-lobby">
           <div className="lobby-orbit" aria-hidden="true">
             <span />

@@ -33,6 +33,7 @@ import { openDatabase } from "./db/database.js";
 import { AppError, asAppError } from "./errors.js";
 import { WindowRateLimiter } from "./realtime/rate-limiter.js";
 import { VotingService } from "./services/voting-service.js";
+import { createRecapGenerator } from "./services/recap-generator.js";
 
 type TypedSocket = Socket<
   ClientToServerEvents,
@@ -115,6 +116,7 @@ const draftSchema = {
     joinName: { type: "string", maxLength: 24 },
     language: { type: "string", enum: ["en", "fi"] },
     lockQuestions: { type: "boolean" },
+    aiRecapEnabled: { type: "boolean" },
     questions: {
       type: "array",
       maxItems: 100,
@@ -210,6 +212,7 @@ function isPresenterCommand(value: unknown): value is PresenterCommand {
       "end",
       "toggle_theme",
       "set_comment_wall",
+      "retry_recap",
     ].includes(String(value.action)) &&
     Number.isInteger(value.expectedControlRevision) &&
     Number(value.expectedControlRevision) >= 0 &&
@@ -245,7 +248,10 @@ export interface Application {
   service: VotingService;
 }
 
-export async function buildApplication(config: AppConfig): Promise<Application> {
+export async function buildApplication(
+  config: AppConfig,
+  recapGenerator = createRecapGenerator(config.openaiApiKey),
+): Promise<Application> {
   const resolveClientAddress = createClientAddressResolver(config.trustProxy);
   const socketConnectionLimiter = new WindowRateLimiter(1_500, 60_000);
   const socketEventAddressLimiter = new WindowRateLimiter(1_500, 60_000);
@@ -263,7 +269,9 @@ export async function buildApplication(config: AppConfig): Promise<Application> 
   const databaseHandle = await openDatabase(config, (error) => {
     app.log.error({ error }, "Daily SQLite backup failed");
   });
-  const service = new VotingService(databaseHandle.database);
+  const service = new VotingService(databaseHandle.database, recapGenerator, (sessionId) => {
+    void broadcastSnapshots(sessionId, true);
+  });
   const auth = new AdminAuth(databaseHandle.database, config.adminPassword);
   const developmentOrigins = new Set([
     "http://localhost:5173",
@@ -934,6 +942,7 @@ export async function buildApplication(config: AppConfig): Promise<Application> 
   }
 
   app.addHook("preClose", async () => {
+    await service.close();
     for (const pending of pendingResponseBroadcasts.values()) {
       clearTimeout(pending.timer);
     }

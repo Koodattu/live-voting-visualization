@@ -27,6 +27,7 @@ Hiding live Results from the Participant View is a normal UX rule, not an access
 
 - A Draft Session has a title, Finnish or English Session Language, a unique Join Name, an ordered Question set, and a Question locking setting.
 - **Lock questions** (the default, including existing sessions) makes responses final when the Presenter leaves a Question. **Don’t lock questions** allows Participants to edit responses whenever the Presenter revisits the Question. The setting is editable only in a Draft and is preserved when duplicating a session.
+- **AI recap** (off by default) adds a closing slide after the last Question. The setting is editable only in a Draft and is preserved when duplicating a session. It requires a server-side OpenAI API key.
 - Join Names are Presenter-chosen, 3–24 characters, case-insensitive, normalized to lowercase, and limited to ASCII `a-z`, `0-9`, and hyphens. System route names are reserved.
 - A Join Name remains unavailable until its session is explicitly deleted.
 - Questions and Options may be edited and reordered only while the session is a Draft.
@@ -58,7 +59,8 @@ Multi-select, ranking, numeric rating, long text, and additional Question types 
 1. **Lobby:** the Presentation Display shows the title, Join Name, direct link, QR code, and cumulative number of joined Guest Identities. Participant Views wait in sync.
 2. **Open Question:** from the Lobby, the Presenter opens the first Question. Participant Views show response controls without Results. The Presentation Display shows the Question and live Result or Comment Wall.
 3. **Navigate:** Previous and Next move exactly one position through configured order, immediately closing the departing Question without a confirmation or separate action. With locking enabled, revisited Questions remain Closed and read-only. With locking disabled, revisited Questions reopen with their saved responses available to edit. Selecting an Unshown Question opens it immediately. Navigation never skips intervening Questions.
-4. **End:** after an in-app confirmation, the Presenter may end from the Lobby or any Question, including before every configured Question was shown. Any Open Question closes automatically and all responses become final. Ending is permanent.
+4. **AI recap (optional):** Next from the last Question becomes Show recap, closes voting, and generates a closing slide in the background. Previous returns to the last Question and applies the normal Question locking setting. Participant Views show a thank-you message directing attention to the Presentation Display.
+5. **End:** after an in-app confirmation, the Presenter may end from the Lobby, any Question, or the recap, including before every configured Question was shown. Any Open Question closes automatically and all responses become final. Ending from the final Question also opens an enabled recap; ending earlier does not generate one. Ending is permanent.
 
 Only the currently presented Open Question accepts responses. All Participant Views and Presentation Displays follow Presenter navigation. During a Live Session, Participant Views do not reveal Results. Refreshing or reconnecting restores the Guest Identity's latest Vote or Comment for the Open or revisited Question. Start, End, and deletion confirmations use styled in-app dialogs with Cancel and Escape support; question navigation has no confirmation.
 
@@ -76,9 +78,12 @@ Multiple authenticated Admin browsers may control one Live Session. Presenter co
 
 ## Ended Sessions
 
+- An enabled AI recap summarizes the audience's pulse using only the title, ordered Questions, aggregate results, and visible Comments, in the Session Language. GPT-6 Luna with xhigh reasoning may choose text, bars, or a donut chart. Chart values are calculated from referenced Options and show their source and denominator. Hidden Comments are excluded; Guest Identities and secrets are never sent.
+- Recap generation shows a loading state and synchronizes all displays. Completed recaps are saved and included in Session Results. Reopening voting or changing Comment Wall visibility invalidates the recap. Failures offer a presenter-only retry, including after End; refreshes never trigger extra API calls.
+
 - Ended Sessions disappear from the homepage but remain public at `/{joinName}` until deletion.
 - Anyone with the Join Name can view the Session Results. Unshown Questions remain Admin-only.
-- On End, Participant Views switch to the Session Results. The Presentation Display stays on the final presented Question and its final Result or Comment Wall; if no Question was presented, it shows a simple completion screen.
+- On End, Participant Views switch to the Session Results. The Presentation Display shows an enabled recap when ending from the last Question or recap; otherwise it stays on the final presented Question and its final Result or Comment Wall. If no Question was presented, it shows a simple completion screen.
 - Ended Sessions cannot restart. Their Question set can be duplicated into a new Draft with a new Join Name and no responses.
 - Admin may export final responses as CSV with Question, Option or Comment, Guest Identity, creation time, and last-update time. Export neutralizes spreadsheet-formula prefixes in authored text.
 - A Live Session cannot be deleted. Deleting an Ended Session requires typing its Join Name; an unused Draft uses a normal confirmation.

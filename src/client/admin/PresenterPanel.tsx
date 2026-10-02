@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type {
   AdminSessionDetail,
-  PresenterAction,
 } from "../../shared/contracts.js";
 import { CommentGrid, ResultBars } from "../components/results.js";
+import { RecapSlide } from "../components/RecapSlide.js";
 import { Button, ConfirmationDialog, InlineNotice, StatusPill } from "../components/ui.js";
 import { translate } from "../i18n.js";
-import { createSocket, type AppSocket } from "../socket.js";
+import { usePresenterSession } from "./use-presenter-session.js";
 import { useJoinQrCode } from "../use-join-qr-code.js";
 
 export function PresenterPanel({
@@ -20,82 +20,16 @@ export function PresenterPanel({
   onSnapshot: (snapshot: AdminSessionDetail) => void;
   onAuthExpired: () => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { error, busy, command } = usePresenterSession(session, onSnapshot, onAuthExpired);
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const socketRef = useRef<AppSocket | null>(null);
   const qrCode = useJoinQrCode(session.joinName);
-
-  useEffect(() => {
-    const socket = createSocket();
-    socketRef.current = socket;
-    const subscribe = () => {
-      socket.emit(
-        "session:subscribe",
-        { joinName: session.joinName, role: "admin" },
-        (result) => {
-          if (result.ok && result.data.role === "admin") {
-            onSnapshot(result.data);
-            setError(null);
-          } else if (!result.ok) {
-            if (result.error.code === "admin_required") onAuthExpired();
-            else setError(result.error.message);
-          }
-        },
-      );
-    };
-    socket.on("connect", subscribe);
-    socket.on("session:snapshot", (snapshot) => {
-      if (snapshot.role === "admin") onSnapshot(snapshot);
-    });
-    socket.on("disconnect", (reason) => {
-      if (reason === "io server disconnect") onAuthExpired();
-    });
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [session.id, session.joinName, onAuthExpired, onSnapshot]);
-
-  const command = (
-    action: PresenterAction,
-    options: { value?: boolean } = {},
-  ) => {
-    const socket = socketRef.current;
-    if (!socket) return;
-    setBusy(true);
-    setError(null);
-    socket.emit(
-      "presenter:command",
-      {
-        requestId: crypto.randomUUID(),
-        action,
-        expectedControlRevision: session.controlRevision,
-        value: options.value,
-      },
-      (result) => {
-        setBusy(false);
-        if (result.ok) {
-          onSnapshot(result.data);
-        } else {
-          if (result.error.code === "admin_required") {
-            onAuthExpired();
-            return;
-          }
-          setError(result.error.message);
-          socket.emit("session:snapshot", (fresh) => {
-            if (fresh.ok && fresh.data.role === "admin") onSnapshot(fresh.data);
-          });
-        }
-      },
-    );
-  };
 
   const current =
     session.presentedPosition === null
       ? undefined
       : session.questions[session.presentedPosition];
-  const hasNext = current ? current.position + 1 < session.questions.length : false;
+  const isLastQuestion = current?.position === session.questions.length - 1;
+  const hasNext = !session.recapVisible && Boolean(current && (!isLastQuestion || session.aiRecapEnabled));
   const hasFeedback = session.questions.some((question) => question.type === "feedback");
 
   return (
@@ -153,7 +87,9 @@ export function PresenterPanel({
 
       <div className="presenter-layout">
         <section className="presenter-preview">
-          {!current ? (
+          {session.recapVisible ? (
+            <RecapSlide recap={session.recap} language={session.language} />
+          ) : !current ? (
             <div className="presenter-lobby-preview">
               <div className="presenter-lobby-preview__layout">
                 <div className="presenter-lobby-preview__copy">
@@ -214,7 +150,7 @@ export function PresenterPanel({
               <div className="navigation-controls">
                 <Button
                   variant="secondary"
-                  disabled={busy || current.position === 0}
+                  disabled={busy || (current.position === 0 && !session.recapVisible)}
                   onClick={() => command("previous")}
                 >
                   ← Previous
@@ -223,13 +159,19 @@ export function PresenterPanel({
                   disabled={busy || !hasNext}
                   onClick={() => command("next")}
                 >
-                  Next →
+                  {isLastQuestion && session.aiRecapEnabled ? translate("en", "showRecap") : "Next →"}
                 </Button>
               </div>
             )}
             <p className="control-help">
-              {translate("en", session.lockQuestions ? "lockQuestionsHelp" : "dontLockQuestionsHelp")}
+              {translate("en", session.recapVisible ? "recapFlowHelp" : session.lockQuestions ? "lockQuestionsHelp" : "dontLockQuestionsHelp")}
             </p>
+            {session.aiRecapEnabled && !session.aiRecapAvailable && <p className="control-help">{translate("en", "recapSetup")}</p>}
+            {session.recapVisible && session.recap.status === "failed" && (
+              <Button variant="secondary" disabled={busy || !session.aiRecapAvailable} onClick={() => command("retry_recap")}>
+                {translate("en", "recapRetry")}
+              </Button>
+            )}
           </div>
 
           <div className="control-panel__section">

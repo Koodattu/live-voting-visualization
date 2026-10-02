@@ -24,10 +24,13 @@ import type {
   QuestionStatus,
   QuestionType,
   ResponseSubmission,
+  RecapContent,
+  SessionRecap,
   SessionLanguage,
   SessionStatus,
 } from "../../shared/contracts.js";
 import { AppError } from "../errors.js";
+import type { RecapGenerator, RecapInput } from "./recap-generator.js";
 import {
   normalizeDraftInput,
   normalizeJoinName,
@@ -40,6 +43,11 @@ interface SessionRow {
   title: string;
   language: SessionLanguage;
   lock_questions: 0 | 1;
+  ai_recap_enabled: 0 | 1;
+  recap_visible: 0 | 1;
+  recap_status: SessionRecap["status"];
+  recap_content: string | null;
+  recap_generation_id: string | null;
   status: SessionStatus;
   presented_position: number | null;
   furthest_presented_position: number;
@@ -116,7 +124,84 @@ function asOption(row: OptionRow): OptionSummary {
 }
 
 export class VotingService {
-  constructor(private readonly database: Database.Database) {}
+  private readonly recapJobs = new Map<string, { id: string; controller: AbortController; promise: Promise<void> }>();
+
+  constructor(
+    private readonly database: Database.Database,
+    private readonly generateRecap?: RecapGenerator,
+    private readonly onRecapChanged: (sessionId: string) => void = () => undefined,
+  ) {
+    // A process restart cannot resume an in-flight API request. Allow an explicit retry.
+    database.prepare(`UPDATE sessions SET recap_status = 'failed', recap_generation_id = NULL,
+      state_version = state_version + 1 WHERE recap_status = 'generating'`).run();
+  }
+
+  async close(): Promise<void> {
+    for (const job of this.recapJobs.values()) job.controller.abort();
+    await Promise.all([...this.recapJobs.values()].map((job) => job.promise));
+  }
+
+  private recap(session: SessionRow): SessionRecap {
+    return {
+      status: session.recap_status,
+      content: session.recap_content ? JSON.parse(session.recap_content) as RecapContent : null,
+    };
+  }
+
+  private invalidateRecap(sessionId: string): void {
+    this.database.prepare(`UPDATE sessions SET recap_status = 'idle', recap_content = NULL,
+      recap_generation_id = NULL WHERE id = ?`).run(sessionId);
+  }
+
+  private queueRecap(sessionId: string): void {
+    this.database.prepare(`UPDATE sessions SET recap_status = ?, recap_generation_id = ?
+      WHERE id = ? AND recap_status = 'idle' AND ai_recap_enabled = 1`)
+      .run(this.generateRecap ? "generating" : "failed", this.generateRecap ? randomUUID() : null, sessionId);
+  }
+
+  private syncRecapJob(sessionId: string): void {
+    const session = this.sessionById(sessionId);
+    const existing = this.recapJobs.get(sessionId);
+    if (existing?.id === session?.recap_generation_id) return;
+    existing?.controller.abort();
+    if (!session || session.recap_status !== "generating" || !session.recap_generation_id || !this.generateRecap) return;
+    const input: RecapInput = {
+      title: session.title,
+      language: session.language,
+      questions: this.questions(sessionId)
+        .filter((question) => question.status !== "unshown")
+        .map((question) => {
+          const display = this.displayQuestion(session, question, false);
+          return {
+            id: display.id, prompt: display.prompt, type: display.type,
+            result: display.result, commentsVisible: display.commentsVisible,
+            comments: display.comments.map((comment) => comment.content),
+          };
+        }),
+    };
+    const id = session.recap_generation_id;
+    const controller = new AbortController();
+    const finish = (content: RecapContent | null) => {
+      if (controller.signal.aborted) return;
+      const updated = this.database.prepare(`UPDATE sessions
+        SET recap_status = ?, recap_content = ?, recap_generation_id = NULL,
+            state_version = state_version + 1
+        WHERE id = ? AND recap_generation_id = ? AND recap_status = 'generating'`)
+        .run(content ? "ready" : "failed", content ? JSON.stringify(content) : null, sessionId, id);
+      if (updated.changes) this.onRecapChanged(sessionId);
+    };
+    const generate = this.generateRecap;
+    const promise = Promise.resolve()
+      .then(() => {
+        controller.signal.throwIfAborted();
+        return generate(input, controller.signal);
+      })
+      .then((content) => finish(content), () => finish(null))
+      .finally(() => {
+        if (this.recapJobs.get(sessionId)?.id === id) this.recapJobs.delete(sessionId);
+      });
+    this.recapJobs.set(sessionId, { id, controller, promise });
+  }
 
   private sessionById(id: string): SessionRow | undefined {
     return this.database
@@ -396,6 +481,10 @@ export class VotingService {
       role: "admin",
       ...this.summary(session),
       lockQuestions: session.lock_questions === 1,
+      aiRecapEnabled: session.ai_recap_enabled === 1,
+      aiRecapAvailable: Boolean(this.generateRecap),
+      recapVisible: session.recap_visible === 1,
+      recap: this.recap(session),
       stateVersion: session.state_version,
       controlRevision: session.control_revision,
       displayTheme: session.display_theme,
@@ -439,6 +528,8 @@ export class VotingService {
         : null,
       ownResponse: this.ownResponse(current, guestId),
       results: this.publicResults(session),
+      recapVisible: session.recap_visible === 1,
+      recap: session.status === "ended" && session.recap_visible === 1 ? this.recap(session) : null,
     };
   }
 
@@ -473,6 +564,8 @@ export class VotingService {
         previous?.status === "closed"
           ? this.displayQuestion(session, previous, false)
           : null,
+      recapVisible: session.recap_visible === 1,
+      recap: session.recap_visible === 1 ? this.recap(session) : null,
     };
   }
 
@@ -521,8 +614,8 @@ export class VotingService {
       this.database
         .prepare(
           `INSERT INTO sessions
-            (id, join_name, title, language, lock_questions, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            (id, join_name, title, language, lock_questions, ai_recap_enabled, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           sessionId,
@@ -530,6 +623,7 @@ export class VotingService {
           draft.title,
           draft.language,
           draft.lockQuestions ? 1 : 0,
+          draft.aiRecapEnabled ? 1 : 0,
           createdAt,
           createdAt,
         );
@@ -580,12 +674,12 @@ export class VotingService {
       this.database
         .prepare(
           `UPDATE sessions
-           SET join_name = ?, title = ?, language = ?, lock_questions = ?, updated_at = ?,
+           SET join_name = ?, title = ?, language = ?, lock_questions = ?, ai_recap_enabled = ?, updated_at = ?,
                control_revision = control_revision + 1,
                state_version = state_version + 1
            WHERE id = ?`,
         )
-        .run(draft.joinName, draft.title, draft.language, draft.lockQuestions ? 1 : 0, now(), sessionId);
+        .run(draft.joinName, draft.title, draft.language, draft.lockQuestions ? 1 : 0, draft.aiRecapEnabled ? 1 : 0, now(), sessionId);
     });
 
     try {
@@ -748,7 +842,7 @@ export class VotingService {
         return;
       }
       const session = this.requireSessionById(sessionId);
-      if (session.status !== "live") {
+      if (session.status !== "live" && !(session.status === "ended" && command.action === "retry_recap")) {
         throw new AppError(
           "invalid_session_state",
           "This Voting Session is not live.",
@@ -819,9 +913,19 @@ export class VotingService {
               409,
             );
           }
+          if (command.action === "next" && session.recap_visible === 0 && session.ai_recap_enabled === 1 &&
+              current.position === this.questions(session.id).length - 1) {
+            closeCurrentQuestion();
+            this.database.prepare("UPDATE sessions SET recap_visible = 1 WHERE id = ?").run(session.id);
+            this.queueRecap(session.id);
+            break;
+          }
+          if (command.action === "next" && session.recap_visible === 1) {
+            throw new AppError("invalid_transition", "The recap is the final slide.", 409);
+          }
           const target = this.questionAt(
             session.id,
-            current.position + (command.action === "next" ? 1 : -1),
+            session.recap_visible === 1 ? current.position : current.position + (command.action === "next" ? 1 : -1),
           );
           if (!target) {
             throw new AppError(
@@ -834,6 +938,7 @@ export class VotingService {
           // closed Questions reopen on revisit, preserving their existing responses.
           closeCurrentQuestion();
           if (target.status === "unshown" || session.lock_questions === 0) {
+            this.invalidateRecap(session.id);
             this.database
               .prepare(
                 `UPDATE questions
@@ -846,7 +951,7 @@ export class VotingService {
           this.database
             .prepare(
               `UPDATE sessions
-               SET presented_position = ?, furthest_presented_position = ?
+               SET presented_position = ?, furthest_presented_position = ?, recap_visible = 0
                WHERE id = ?`,
             )
             .run(
@@ -866,6 +971,10 @@ export class VotingService {
                WHERE id = ?`,
             )
             .run(timestamp, session.id);
+          if (session.ai_recap_enabled === 1 && current?.position === this.questions(session.id).length - 1) {
+            this.database.prepare("UPDATE sessions SET recap_visible = 1 WHERE id = ?").run(session.id);
+            this.queueRecap(session.id);
+          }
           break;
         }
         case "toggle_theme": {
@@ -891,6 +1000,18 @@ export class VotingService {
               "UPDATE sessions SET comment_wall_visible = ? WHERE id = ?",
             )
             .run(command.value ? 1 : 0, session.id);
+          if (session.comment_wall_visible !== Number(command.value)) {
+            this.invalidateRecap(session.id);
+            if (session.recap_visible === 1) this.queueRecap(session.id);
+          }
+          break;
+        }
+        case "retry_recap": {
+          if (session.ai_recap_enabled !== 1 || session.recap_visible !== 1 || session.recap_status !== "failed") {
+            throw new AppError("invalid_transition", "Only a failed recap can be retried.", 409);
+          }
+          this.invalidateRecap(session.id);
+          this.queueRecap(session.id);
           break;
         }
         default: {
@@ -919,6 +1040,7 @@ export class VotingService {
       );
     });
     transition.immediate();
+    this.syncRecapJob(sessionId);
     return this.adminSnapshot(sessionId);
   }
 
@@ -1167,6 +1289,7 @@ export class VotingService {
       joinName,
       language: source.language,
       lockQuestions: source.lock_questions === 1,
+      aiRecapEnabled: source.ai_recap_enabled === 1,
       questions: this.questions(source.id).map((question) => ({
         type: question.type,
         prompt: question.prompt,
@@ -1214,6 +1337,7 @@ export class VotingService {
       this.database.prepare("DELETE FROM sessions WHERE id = ?").run(session.id);
     });
     remove.immediate();
+    this.syncRecapJob(sessionId);
   }
 
   exportCsv(sessionId: string): { filename: string; csv: string } {

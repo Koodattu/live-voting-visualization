@@ -4,6 +4,31 @@ export type QuestionType = "single_choice" | "feedback";
 export type QuestionStatus = "unshown" | "open" | "closed";
 export type DisplayTheme = "light" | "dark";
 
+export interface RecapChartItem {
+  label: string;
+  percentage: number;
+  count: number;
+  total: number;
+  sourceQuestion: string;
+  sourceOptions: string[];
+}
+
+export interface RecapContent {
+  headline: string;
+  summary: string;
+  highlights: string[];
+  chart: {
+    style: "bar" | "donut";
+    title: string;
+    items: RecapChartItem[];
+  } | null;
+}
+
+export interface SessionRecap {
+  status: "idle" | "generating" | "ready" | "failed";
+  content: RecapContent | null;
+}
+
 export interface DraftOptionInput {
   label: string;
 }
@@ -19,6 +44,7 @@ export interface DraftSessionInput {
   joinName: string;
   language: SessionLanguage;
   lockQuestions: boolean;
+  aiRecapEnabled?: boolean;
   questions: DraftQuestionInput[];
 }
 
@@ -90,6 +116,8 @@ export interface ParticipantSnapshot {
   currentQuestion: PresentedQuestion | null;
   ownResponse: OwnResponse | null;
   results: PublicQuestionResult[];
+  recapVisible: boolean;
+  recap: SessionRecap | null;
 }
 
 export interface DisplaySnapshot {
@@ -105,6 +133,8 @@ export interface DisplaySnapshot {
   joinedCount: number;
   currentQuestion: DisplayQuestion | null;
   previousQuestion: DisplayQuestion | null;
+  recapVisible: boolean;
+  recap: SessionRecap | null;
 }
 
 export interface AdminQuestion extends DisplayQuestion {
@@ -129,6 +159,10 @@ export interface AdminSessionSummary {
 export interface AdminSessionDetail extends AdminSessionSummary {
   role: "admin";
   lockQuestions: boolean;
+  aiRecapEnabled: boolean;
+  aiRecapAvailable: boolean;
+  recapVisible: boolean;
+  recap: SessionRecap;
   stateVersion: number;
   controlRevision: number;
   displayTheme: DisplayTheme;
@@ -153,7 +187,8 @@ export type PresenterAction =
   | "next"
   | "end"
   | "toggle_theme"
-  | "set_comment_wall";
+  | "set_comment_wall"
+  | "retry_recap";
 
 export interface PresenterCommand {
   requestId: string;

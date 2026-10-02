@@ -39,6 +39,9 @@ describe("database backups", () => {
       const service = new VotingService(handle.database);
       const session = service.adminSnapshot("existing");
       expect(session.lockQuestions).toBe(true);
+      expect(session.aiRecapEnabled).toBe(false);
+      expect(session.recapVisible).toBe(false);
+      expect(session.recap).toEqual({ status: "idle", content: null });
       expect(session.questions[0]?.status).toBe("open");
       expect(session.questions[0]?.result?.responseCount).toBe(1);
       expect(service.participantSnapshot("existing", "guest").ownResponse?.optionId).toBe("option-a");

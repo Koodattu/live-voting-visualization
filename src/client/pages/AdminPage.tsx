@@ -303,6 +303,8 @@ export function AdminPage() {
         <EndedPanel
           session={selected}
           onBack={returnToList}
+          onSnapshot={handleSnapshot}
+          onAuthExpired={expireAuthentication}
           onDuplicated={(session) => {
             setSelected(session);
             void loadSessions();

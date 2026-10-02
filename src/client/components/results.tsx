@@ -5,8 +5,10 @@ import type {
   PublicComment,
   PublicQuestionResult,
   SessionLanguage,
+  SessionRecap,
 } from "../../shared/contracts.js";
 import { translate } from "../i18n.js";
+import { RecapSlide } from "./RecapSlide.js";
 
 export function ResultBars({
   result,
@@ -171,10 +173,12 @@ export function SessionResults({
   title,
   language,
   results,
+  recap,
 }: {
   title: string;
   language: SessionLanguage;
   results: PublicQuestionResult[];
+  recap?: SessionRecap | null;
 }) {
   return (
     <main className="results-page">
@@ -183,6 +187,7 @@ export function SessionResults({
         <h1>{title}</h1>
         <p>{translate(language, "resultsBody")}</p>
       </header>
+      {recap && <RecapSlide recap={recap} language={language} />}
       {results.length === 0 ? (
         <section className="result-card stagger-item">
           <h2>{translate(language, "completed")}</h2>

@@ -3,6 +3,7 @@ import { useParams } from "react-router";
 import type { DisplaySnapshot } from "../../shared/contracts.js";
 import { apiRequest } from "../api.js";
 import { CommentWall, QuestionResult, ResultBars } from "../components/results.js";
+import { RecapSlide } from "../components/RecapSlide.js";
 import { ErrorState, Loading, StatusPill } from "../components/ui.js";
 import { translate } from "../i18n.js";
 import { createSocket } from "../socket.js";
@@ -70,7 +71,9 @@ export function DisplayPage() {
       data-theme={snapshot.displayTheme}
       key={`${snapshot.sessionId}:${snapshot.displayTheme}`}
     >
-      {!question ? (
+      {snapshot.recapVisible && snapshot.recap ? (
+        <div className="display-recap"><RecapSlide recap={snapshot.recap} language={language} /></div>
+      ) : !question ? (
         snapshot.status === "ended" ? (
           <section className="display-complete">
             <span className="display-complete__mark" aria-hidden="true">

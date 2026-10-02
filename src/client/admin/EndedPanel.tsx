@@ -4,23 +4,30 @@ import { apiRequest } from "../api.js";
 import { CommentGrid, ResultBars } from "../components/results.js";
 import { Button, ConfirmationDialog, InlineNotice, StatusPill } from "../components/ui.js";
 import { translate } from "../i18n.js";
+import { RecapSlide } from "../components/RecapSlide.js";
+import { usePresenterSession } from "./use-presenter-session.js";
 
 export function EndedPanel({
   session,
   onBack,
   onDuplicated,
   onDeleted,
+  onSnapshot,
+  onAuthExpired,
 }: {
   session: AdminSessionDetail;
   onBack: () => void;
   onDuplicated: (session: AdminSessionDetail) => void;
   onDeleted: () => void;
+  onSnapshot: (snapshot: AdminSessionDetail) => void;
+  onAuthExpired: () => void;
 }) {
   const [joinName, setJoinName] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recapControls = usePresenterSession(session, onSnapshot, onAuthExpired);
 
   const duplicate = async () => {
     setBusy(true);
@@ -107,6 +114,19 @@ export function EndedPanel({
       </div>
 
       {error && <InlineNotice tone="error">{error}</InlineNotice>}
+      {recapControls.error && <InlineNotice tone="error">{recapControls.error}</InlineNotice>}
+
+      {session.recapVisible && (
+        <section className="ended-recap">
+          <RecapSlide recap={session.recap} language={session.language} />
+          {!session.aiRecapAvailable && <p>{translate("en", "recapSetup")}</p>}
+          {session.recap.status === "failed" && (
+            <Button variant="secondary" disabled={recapControls.busy || !session.aiRecapAvailable} onClick={() => recapControls.command("retry_recap")}>
+              {translate("en", "recapRetry")}
+            </Button>
+          )}
+        </section>
+      )}
 
       <div className="ended-layout">
         <section className="admin-results">

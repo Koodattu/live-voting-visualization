@@ -106,6 +106,10 @@ export function normalizeDraftInput(
   if (typeof lockQuestions !== "boolean") {
     throw new AppError("invalid_input", "Choose whether to lock Questions.");
   }
+  const aiRecapEnabled = input.aiRecapEnabled ?? false;
+  if (typeof aiRecapEnabled !== "boolean") {
+    throw new AppError("invalid_input", "Choose whether to enable the AI recap.");
+  }
   if (!Array.isArray(input.questions)) {
     throw new AppError("invalid_question", "Questions must be a list.");
   }
@@ -143,6 +147,7 @@ export function normalizeDraftInput(
     joinName: normalizeJoinName(input.joinName),
     language,
     lockQuestions,
+    aiRecapEnabled,
     questions,
   };
 }

@@ -109,8 +109,12 @@ The live-session controls within the Admin Panel used to start and end the sessi
 _Avoid_: Presenter view, presenter mode
 
 **Presentation Display**:
-The public, read-only projected surface showing joining instructions, the presented question, and its live or final Result or Comment Wall. When the session ends, it remains on the final presented state while Participant Views switch to Session Results.
+The public, read-only projected surface showing joining instructions, the presented question, and its live or final Result or Comment Wall. An enabled AI Recap provides a closing slide after the last Question. When the session ends, it remains on the final presented state or recap while Participant Views switch to Session Results.
 _Avoid_: Audience display, presenter screen, big screen, projector view
+
+**AI Recap**:
+An optional, generated closing slide describing the audience's pulse from the Voting Session title, ordered Questions, aggregate Results, and visible Comments. It uses text and optionally a chart grounded in recorded Votes. The Draft-only setting defaults off. Generation begins after the last Question closes when the Presenter advances to the recap or ends from that Question. Completed recaps are saved with the session; reopening voting or changing Comment Wall visibility invalidates them.
+_Avoid_: Sentiment score, AI Question
 
 **Display Theme**:
 The presenter's live choice of a light or dark appearance synchronized across a voting session's presentation displays. It does not change participant or admin appearance.
