@@ -26,6 +26,53 @@ describe("HTTP and realtime integration", () => {
     application = undefined;
   });
 
+  it("screens free-word submissions before any public broadcast and keeps rejected edits private", async () => {
+    let resolve!: (decision: { suitable: boolean; severeAbuseProbability: number }) => void;
+    const screen = vi.fn(() => new Promise<{ suitable: boolean; severeAbuseProbability: number }>((done) => { resolve = done; }));
+    const config = await testConfig();
+    application = await buildApplication(config, undefined, screen);
+    await application.app.listen({ host: "127.0.0.1", port: 0 });
+    const baseUrl = `http://127.0.0.1:${(application.app.server.address() as AddressInfo).port}`;
+    const login = await application.app.inject({ method: "POST", url: "/api/admin/login", payload: { password: config.adminPassword } });
+    const cookie = String(login.headers["set-cookie"]).split(";")[0]!;
+    const created = await application.app.inject({
+      method: "POST", url: "/api/admin/sessions", headers: { cookie },
+      payload: { title: "Screened comments", joinName: "screened-comments", language: "fi", screenComments: true,
+        questions: [{ type: "feedback", prompt: "Any thoughts?", options: [] }] },
+    });
+    expect(created.statusCode).toBe(201);
+    const draft = created.json<AdminSessionDetail>();
+    expect(draft.screenComments).toBe(true);
+    let session = application.service.startSession(draft.id, draft.controlRevision, "screen-start-0001");
+    session = application.service.runPresenterCommand(session.id, { requestId: "screen-open-0001", action: "open_first", expectedControlRevision: session.controlRevision });
+    session = application.service.runPresenterCommand(session.id, { requestId: "screen-wall-0001", action: "set_comment_wall", value: true, expectedControlRevision: session.controlRevision });
+    const guest = application.service.joinSession(session.joinName, undefined).credentials!;
+    const participant = connect(baseUrl, { forceNew: true, reconnection: false, transports: ["websocket"] }) as TestSocket;
+    const display = connect(baseUrl, { forceNew: true, reconnection: false, transports: ["websocket"] }) as TestSocket;
+    clients.push(participant, display);
+    await Promise.all([waitForConnection(participant), waitForConnection(display)]);
+    await subscribe(participant, { joinName: session.joinName, role: "participant", credentials: guest });
+    await subscribe(display, { joinName: session.joinName, role: "display" });
+    const observed: DisplaySnapshot[] = [];
+    display.on("session:snapshot", (snapshot) => { if (snapshot.role === "display") observed.push(snapshot); });
+    const payload = { requestId: "screen-comment-0001", questionId: session.questions[0]!.id, content: "Vittu, Jerry!" };
+    const pending = submitResponse(participant, payload);
+    await vi.waitFor(() => expect(screen).toHaveBeenCalledTimes(1));
+    expect(application.service.displaySnapshot(session.id).currentQuestion?.comments).toEqual([]);
+    resolve({ suitable: true, severeAbuseProbability: 0.001 });
+    const accepted = await pending;
+    expect(accepted).toMatchObject({ ok: true, data: { screenComments: true, ownResponse: { content: payload.content } } });
+    await vi.waitFor(() => expect(observed.at(-1)?.currentQuestion?.comments[0]?.content).toBe(payload.content));
+    const rejected = submitResponse(participant, { ...payload, requestId: "screen-comment-0002", content: "Rejected edit" });
+    await vi.waitFor(() => expect(screen).toHaveBeenCalledTimes(2));
+    resolve({ suitable: false, severeAbuseProbability: 0.999 });
+    expect(await rejected).toMatchObject({ ok: false, error: { code: "comment_not_suitable" } });
+    expect(application.service.displaySnapshot(session.id).currentQuestion?.comments.map((c) => c.content)).toEqual([payload.content]);
+    const http = await application.app.inject({ method: "GET", url: `/api/public/sessions/${session.joinName}/display` });
+    expect(http.json<DisplaySnapshot>().currentQuestion?.comments.map((c) => c.content)).toEqual([payload.content]);
+    expect(JSON.stringify(observed)).not.toContain("Rejected edit");
+  });
+
   it("broadcasts a pending and completed recap, restores it on reconnect, and restricts retries to presenters", async () => {
     let resolveRecap!: (content: { headline: string; summary: string; highlights: string[]; chart: null }) => void;
     const generate = vi.fn(() => new Promise<{ headline: string; summary: string; highlights: string[]; chart: null }>((resolve) => { resolveRecap = resolve; }));

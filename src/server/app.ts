@@ -34,6 +34,7 @@ import { AppError, asAppError } from "./errors.js";
 import { WindowRateLimiter } from "./realtime/rate-limiter.js";
 import { VotingService } from "./services/voting-service.js";
 import { createRecapGenerator } from "./services/recap-generator.js";
+import { createCommentScreener } from "./services/comment-screening.js";
 
 type TypedSocket = Socket<
   ClientToServerEvents,
@@ -117,6 +118,7 @@ const draftSchema = {
     language: { type: "string", enum: ["en", "fi"] },
     lockQuestions: { type: "boolean" },
     aiRecapEnabled: { type: "boolean" },
+    screenComments: { type: "boolean" },
     questions: {
       type: "array",
       maxItems: 100,
@@ -251,6 +253,7 @@ export interface Application {
 export async function buildApplication(
   config: AppConfig,
   recapGenerator = createRecapGenerator(config.openaiApiKey),
+  commentScreener = createCommentScreener(config.openaiApiKey),
 ): Promise<Application> {
   const resolveClientAddress = createClientAddressResolver(config.trustProxy);
   const socketConnectionLimiter = new WindowRateLimiter(1_500, 60_000);
@@ -271,7 +274,7 @@ export async function buildApplication(
   });
   const service = new VotingService(databaseHandle.database, recapGenerator, (sessionId) => {
     void broadcastSnapshots(sessionId, true);
-  });
+  }, commentScreener);
   const auth = new AdminAuth(databaseHandle.database, config.adminPassword);
   const developmentOrigins = new Set([
     "http://localhost:5173",
@@ -863,13 +866,14 @@ export async function buildApplication(
               429,
             );
           }
-          const snapshot = service.submitResponse(
-            socket.data.sessionId,
-            socket.data.guestId,
+          const { sessionId, guestId } = socket.data;
+          const snapshot = await service.submitScreenedResponse(
+            sessionId,
+            guestId,
             submission,
           );
           sendAcknowledgement(acknowledge, success(snapshot));
-          scheduleResponseBroadcast(socket.data.sessionId, socket.data.guestId);
+          scheduleResponseBroadcast(sessionId, guestId);
         } catch (error) {
           sendAcknowledgement(acknowledge, failure(error));
         }

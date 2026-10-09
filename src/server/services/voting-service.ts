@@ -30,6 +30,7 @@ import type {
   SessionStatus,
 } from "../../shared/contracts.js";
 import { AppError } from "../errors.js";
+import type { CommentScreener } from "./comment-screening.js";
 import type { RecapGenerator, RecapInput } from "./recap-generator.js";
 import {
   normalizeDraftInput,
@@ -44,6 +45,7 @@ interface SessionRow {
   language: SessionLanguage;
   lock_questions: 0 | 1;
   ai_recap_enabled: 0 | 1;
+  screen_comments: 0 | 1;
   recap_visible: 0 | 1;
   recap_status: SessionRecap["status"];
   recap_content: string | null;
@@ -126,10 +128,13 @@ function asOption(row: OptionRow): OptionSummary {
 export class VotingService {
   private readonly recapJobs = new Map<string, { id: string; controller: AbortController; promise: Promise<void> }>();
 
+  private readonly screeningJobs = new Map<string, { requestId: string; hash: string; promise: Promise<ParticipantSnapshot> }>();
+
   constructor(
     private readonly database: Database.Database,
     private readonly generateRecap?: RecapGenerator,
     private readonly onRecapChanged: (sessionId: string) => void = () => undefined,
+    private readonly screenComment?: CommentScreener,
   ) {
     // A process restart cannot resume an in-flight API request. Allow an explicit retry.
     database.prepare(`UPDATE sessions SET recap_status = 'failed', recap_generation_id = NULL,
@@ -139,6 +144,7 @@ export class VotingService {
   async close(): Promise<void> {
     for (const job of this.recapJobs.values()) job.controller.abort();
     await Promise.all([...this.recapJobs.values()].map((job) => job.promise));
+    await Promise.allSettled([...this.screeningJobs.values()].map((job) => job.promise));
   }
 
   private recap(session: SessionRow): SessionRecap {
@@ -483,6 +489,8 @@ export class VotingService {
       lockQuestions: session.lock_questions === 1,
       aiRecapEnabled: session.ai_recap_enabled === 1,
       aiRecapAvailable: Boolean(this.generateRecap),
+      screenComments: session.screen_comments === 1,
+      commentScreeningAvailable: Boolean(this.screenComment),
       recapVisible: session.recap_visible === 1,
       recap: this.recap(session),
       stateVersion: session.state_version,
@@ -509,6 +517,7 @@ export class VotingService {
         : undefined;
     return {
       role: "participant",
+      screenComments: session.screen_comments === 1,
       sessionId: session.id,
       title: session.title,
       joinName: session.join_name,
@@ -614,8 +623,8 @@ export class VotingService {
       this.database
         .prepare(
           `INSERT INTO sessions
-            (id, join_name, title, language, lock_questions, ai_recap_enabled, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, join_name, title, language, lock_questions, ai_recap_enabled, screen_comments, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           sessionId,
@@ -624,6 +633,7 @@ export class VotingService {
           draft.language,
           draft.lockQuestions ? 1 : 0,
           draft.aiRecapEnabled ? 1 : 0,
+          draft.screenComments ? 1 : 0,
           createdAt,
           createdAt,
         );
@@ -674,12 +684,12 @@ export class VotingService {
       this.database
         .prepare(
           `UPDATE sessions
-           SET join_name = ?, title = ?, language = ?, lock_questions = ?, ai_recap_enabled = ?, updated_at = ?,
+           SET join_name = ?, title = ?, language = ?, lock_questions = ?, ai_recap_enabled = ?, screen_comments = ?, updated_at = ?,
                control_revision = control_revision + 1,
                state_version = state_version + 1
            WHERE id = ?`,
         )
-        .run(draft.joinName, draft.title, draft.language, draft.lockQuestions ? 1 : 0, draft.aiRecapEnabled ? 1 : 0, now(), sessionId);
+        .run(draft.joinName, draft.title, draft.language, draft.lockQuestions ? 1 : 0, draft.aiRecapEnabled ? 1 : 0, draft.screenComments ? 1 : 0, now(), sessionId);
     });
 
     try {
@@ -796,6 +806,9 @@ export class VotingService {
         );
       }
       this.validateStoredQuestions(sessionId);
+      if (session.screen_comments && !this.screenComment) {
+        throw new AppError("comment_screening_unavailable", "Comment screening requires an OpenAI API key on the server.", 503);
+      }
       const timestamp = now();
       this.database
         .prepare(
@@ -1143,10 +1156,103 @@ export class VotingService {
     };
   }
 
+  private responseContext(sessionId: string, guestId: string, submission: ResponseSubmission) {
+    const session = this.requireSessionById(sessionId);
+    if (session.status !== "live") {
+      throw new AppError("session_not_live", "This Voting Session is no longer accepting responses.", 409);
+    }
+    const question = this.database.prepare("SELECT * FROM questions WHERE id = ? AND session_id = ?")
+      .get(submission.questionId, sessionId) as QuestionRow | undefined;
+    if (!question || question.status !== "open" || question.position !== session.presented_position) {
+      throw new AppError("question_not_open", "This Question is no longer accepting responses.", 409);
+    }
+    if (!this.database.prepare("SELECT id FROM guest_identities WHERE id = ? AND session_id = ?").get(guestId, sessionId)) {
+      throw new AppError("participant_required", "Join as a Participant before responding.", 401);
+    }
+    let content = "";
+    if (question.type === "single_choice") {
+      if (typeof submission.optionId !== "string") {
+        throw new AppError("option_required", "Choose one Option.");
+      }
+      if (!this.database.prepare("SELECT id FROM options WHERE id = ? AND question_id = ?").get(submission.optionId, question.id)) {
+        throw new AppError("invalid_option", "That Option does not belong to this Question.");
+      }
+    } else {
+      if (typeof submission.content !== "string") {
+        throw new AppError("comment_required", "Enter a short Comment.");
+      }
+      content = submission.content.trim();
+      if (content.length === 0 || [...content].length > 160) {
+        throw new AppError("invalid_comment", "Comments must contain 1–160 characters.");
+      }
+    }
+    return { session, question, content };
+  }
+
+  async submitScreenedResponse(
+    sessionId: string,
+    guestId: string,
+    submission: ResponseSubmission,
+  ): Promise<ParticipantSnapshot> {
+    // Capture the payload before awaiting the external classifier.
+    submission = { ...submission };
+    const requestId = validateRequestId(submission.requestId);
+    const hash = payloadHash({ questionId: submission.questionId, optionId: submission.optionId, content: submission.content });
+    if (this.receiptIsDuplicate(sessionId, guestId, requestId, "response", hash)) {
+      return this.participantSnapshot(sessionId, guestId);
+    }
+    const { session, question, content } = this.responseContext(sessionId, guestId, submission);
+    if (!session.screen_comments || question.type !== "feedback") {
+      return this.submitResponse(sessionId, guestId, submission);
+    }
+    const key = sessionId + ":" + guestId;
+    const existing = this.screeningJobs.get(key);
+    if (existing) {
+      if (existing.requestId === requestId && existing.hash === hash) return existing.promise;
+      throw new AppError(
+        existing.requestId === requestId ? "request_id_reused" : "response_pending",
+        "A Comment is already being checked. Wait a moment before submitting again.",
+        409,
+      );
+    }
+    const screen = this.screenComment;
+    if (!screen || this.screeningJobs.size >= 128) {
+      throw new AppError("comment_screening_unavailable", "Comment checking is unavailable. Please try again shortly.", 503);
+    }
+    const promise = (async () => {
+      let decision;
+      try {
+        decision = await screen({ title: session.title, question: question.prompt, content });
+      } catch {
+        throw new AppError("comment_screening_unavailable", "Comment checking is unavailable. Please try again shortly.", 503);
+      }
+      if (!decision.suitable) {
+        throw new AppError("comment_not_suitable", "This Comment contains severe abuse and cannot be displayed. Please rephrase it.", 422);
+      }
+      // Revalidate inside the write transaction: the presenter may have moved on.
+      return this.commitResponse(sessionId, guestId, submission, session.control_revision);
+    })();
+    this.screeningJobs.set(key, { requestId, hash, promise });
+    try {
+      return await promise;
+    } finally {
+      this.screeningJobs.delete(key);
+    }
+  }
+
   submitResponse(
     sessionId: string,
     guestId: string,
     submission: ResponseSubmission,
+  ): ParticipantSnapshot {
+    return this.commitResponse(sessionId, guestId, submission);
+  }
+
+  private commitResponse(
+    sessionId: string,
+    guestId: string,
+    submission: ResponseSubmission,
+    screenedRevision?: number,
   ): ParticipantSnapshot {
     const requestId = validateRequestId(submission.requestId);
     const hash = payloadHash({
@@ -1155,57 +1261,18 @@ export class VotingService {
       content: submission.content,
     });
     const submit = this.database.transaction(() => {
-      if (
-        this.receiptIsDuplicate(
-          sessionId,
-          guestId,
-          requestId,
-          "response",
-          hash,
-        )
-      ) {
-        return;
-      }
-      const session = this.requireSessionById(sessionId);
-      if (session.status !== "live") {
-        throw new AppError(
-          "session_not_live",
-          "This Voting Session is no longer accepting responses.",
-          409,
-        );
-      }
-      const question = this.database
-        .prepare(
-          `SELECT * FROM questions WHERE id = ? AND session_id = ?`,
-        )
-        .get(submission.questionId, sessionId) as QuestionRow | undefined;
-      if (
-        !question ||
-        question.status !== "open" ||
-        question.position !== session.presented_position
-      ) {
-        throw new AppError(
-          "question_not_open",
-          "This Question is no longer accepting responses.",
-          409,
-        );
+      if (this.receiptIsDuplicate(sessionId, guestId, requestId, "response", hash)) return;
+      const { session, question, content } = this.responseContext(sessionId, guestId, submission);
+      if (session.screen_comments && question.type === "feedback") {
+        if (screenedRevision === undefined) {
+          throw new AppError("comment_screening_required", "This Comment must be checked before it can be displayed.", 409);
+        }
+        if (screenedRevision !== session.control_revision) {
+          throw new AppError("session_changed", "The presenter changed the session while your Comment was checked. Please try again.", 409);
+        }
       }
       const timestamp = now();
       if (question.type === "single_choice") {
-        if (typeof submission.optionId !== "string") {
-          throw new AppError("option_required", "Choose one Option.");
-        }
-        const option = this.database
-          .prepare(
-            "SELECT id FROM options WHERE id = ? AND question_id = ?",
-          )
-          .get(submission.optionId, question.id);
-        if (!option) {
-          throw new AppError(
-            "invalid_option",
-            "That Option does not belong to this Question.",
-          );
-        }
         this.database
           .prepare(
             `INSERT INTO votes
@@ -1215,25 +1282,8 @@ export class VotingService {
                option_id = excluded.option_id,
                updated_at = excluded.updated_at`,
           )
-          .run(
-            session.id,
-            question.id,
-            guestId,
-            submission.optionId,
-            timestamp,
-            timestamp,
-          );
+          .run(session.id, question.id, guestId, submission.optionId, timestamp, timestamp);
       } else {
-        if (typeof submission.content !== "string") {
-          throw new AppError("comment_required", "Enter a short Comment.");
-        }
-        const content = submission.content.trim();
-        if (content.length === 0 || [...content].length > 160) {
-          throw new AppError(
-            "invalid_comment",
-            "Comments must contain 1–160 characters.",
-          );
-        }
         this.database
           .prepare(
             `INSERT INTO comments
@@ -1243,29 +1293,11 @@ export class VotingService {
                content = excluded.content,
                updated_at = excluded.updated_at`,
           )
-          .run(
-            session.id,
-            question.id,
-            guestId,
-            content,
-            timestamp,
-            timestamp,
-          );
+          .run(session.id, question.id, guestId, content, timestamp, timestamp);
       }
-      this.database
-        .prepare(
-          `UPDATE sessions
-           SET state_version = state_version + 1, updated_at = ?
-           WHERE id = ?`,
-        )
+      this.database.prepare(`UPDATE sessions SET state_version = state_version + 1, updated_at = ? WHERE id = ?`)
         .run(timestamp, session.id);
-      this.saveReceipt(
-        sessionId,
-        guestId,
-        requestId,
-        "response",
-        hash,
-      );
+      this.saveReceipt(sessionId, guestId, requestId, "response", hash);
     });
     submit.immediate();
     return this.participantSnapshot(sessionId, guestId);
@@ -1290,6 +1322,7 @@ export class VotingService {
       language: source.language,
       lockQuestions: source.lock_questions === 1,
       aiRecapEnabled: source.ai_recap_enabled === 1,
+      screenComments: source.screen_comments === 1,
       questions: this.questions(source.id).map((question) => ({
         type: question.type,
         prompt: question.prompt,

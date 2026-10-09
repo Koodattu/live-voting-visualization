@@ -69,6 +69,30 @@ Failed requests and interrupted generations show a fallback with a presenter-onl
 after three minutes and are not automatically retried. Voting and saved Results
 remain available if OpenAI is unconfigured or unavailable.
 
+## Optional free-word screening
+
+**Free-word screening** is off by default and is set independently for each
+Draft Session. It is frozen when the session starts and copied when duplicating
+an ended session. Enable it before starting to check every submitted or edited
+Feedback Comment. It requires the existing server-side `OPENAI_API_KEY`.
+
+The official OpenAI SDK calls the [Decisions API](https://developers.openai.com/api/docs/guides/decisions)
+with `gpt-6-luna` and a predicate for severe abuse. Decisions has no reasoning-effort
+setting. Only a severe-abuse probability of **0.98 or higher** blocks a Comment.
+The policy allows profanity (including Finnish swearing), teasing, criticism,
+political opinions, and hot takes. It targets abusive protected-group slurs,
+dehumanizing hate, and serious direct threats. This is a permissive model estimate,
+not a guarantee of accuracy or a measured 99.9% acceptance rate.
+
+Only the Comment, session title, and question prompt are sent; guest identities
+and secrets stay on the server. Rejected text is never saved or broadcast and
+does not replace an earlier accepted Comment. The participant can rephrase and
+retry. API failures, refusals, and ten-second timeouts show a retry message;
+unchecked Comments are not published while screening is on. Other voting stays
+available. Duplicate in-flight requests share one check, and a changed session
+requires resubmission. Decisions is a beta API; account access and normal API
+usage charges apply.
+
 ## Verification
 
 ```powershell

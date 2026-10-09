@@ -110,6 +110,10 @@ export function normalizeDraftInput(
   if (typeof aiRecapEnabled !== "boolean") {
     throw new AppError("invalid_input", "Choose whether to enable the AI recap.");
   }
+  const screenComments = input.screenComments === undefined ? false : input.screenComments;
+  if (typeof screenComments !== "boolean") {
+    throw new AppError("invalid_input", "Choose whether to screen Comments.");
+  }
   if (!Array.isArray(input.questions)) {
     throw new AppError("invalid_question", "Questions must be a list.");
   }
@@ -148,6 +152,7 @@ export function normalizeDraftInput(
     language,
     lockQuestions,
     aiRecapEnabled,
+    screenComments,
     questions,
   };
 }

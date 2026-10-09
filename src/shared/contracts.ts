@@ -45,6 +45,7 @@ export interface DraftSessionInput {
   language: SessionLanguage;
   lockQuestions: boolean;
   aiRecapEnabled?: boolean;
+  screenComments?: boolean;
   questions: DraftQuestionInput[];
 }
 
@@ -106,6 +107,7 @@ export interface OwnResponse {
 
 export interface ParticipantSnapshot {
   role: "participant";
+  screenComments: boolean;
   sessionId: string;
   title: string;
   joinName: string;
@@ -161,6 +163,8 @@ export interface AdminSessionDetail extends AdminSessionSummary {
   lockQuestions: boolean;
   aiRecapEnabled: boolean;
   aiRecapAvailable: boolean;
+  screenComments: boolean;
+  commentScreeningAvailable: boolean;
   recapVisible: boolean;
   recap: SessionRecap;
   stateVersion: number;

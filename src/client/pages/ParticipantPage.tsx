@@ -285,6 +285,9 @@ export function ParticipantPage() {
                 placeholder={translate(language, "commentPlaceholder")}
                 onChange={(event) => setComment(event.target.value)}
               />
+              {snapshot.screenComments && (
+                <p className="microcopy">{translate(language, "screeningParticipant")}</p>
+              )}
               <div className="feedback-form__meta">
                 <span className="tabular">{comment.length}/160</span>
                 <span>{translate(language, "commentLimit")}</span>
@@ -296,7 +299,7 @@ export function ParticipantPage() {
                 }
               >
                 {saving
-                  ? translate(language, "saving")
+                  ? translate(language, snapshot.screenComments ? "checkingComment" : "saving")
                   : snapshot.ownResponse?.content
                     ? translate(language, "updateComment")
                     : translate(language, "submitComment")}

@@ -40,6 +40,7 @@ describe("database backups", () => {
       const session = service.adminSnapshot("existing");
       expect(session.lockQuestions).toBe(true);
       expect(session.aiRecapEnabled).toBe(false);
+      expect(session.screenComments).toBe(false);
       expect(session.recapVisible).toBe(false);
       expect(session.recap).toEqual({ status: "idle", content: null });
       expect(session.questions[0]?.status).toBe("open");

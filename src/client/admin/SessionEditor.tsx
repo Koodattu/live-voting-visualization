@@ -10,7 +10,7 @@ import { translate } from "../i18n.js";
 
 function emptyDraft(session?: AdminSessionDetail): DraftSessionInput {
   if (!session) {
-    return { title: "", joinName: "", language: "en", lockQuestions: true, aiRecapEnabled: false, questions: [] };
+    return { title: "", joinName: "", language: "en", lockQuestions: true, aiRecapEnabled: false, screenComments: false, questions: [] };
   }
   return {
     title: session.title,
@@ -18,6 +18,7 @@ function emptyDraft(session?: AdminSessionDetail): DraftSessionInput {
     language: session.language,
     lockQuestions: session.lockQuestions,
     aiRecapEnabled: session.aiRecapEnabled,
+    screenComments: session.screenComments,
     questions: session.questions.map((question) => ({
       type: question.type,
       prompt: question.prompt,
@@ -301,6 +302,26 @@ export function SessionEditor({
             <p className="control-help">
               {translate("en", draft.lockQuestions ? "lockQuestionsHelp" : "dontLockQuestionsHelp")}
             </p>
+          </fieldset>
+          <fieldset className="language-field">
+            <legend>{translate("en", "commentScreening")}</legend>
+            <div className="segmented-control">
+              {[false, true].map((screenComments) => (
+                <button type="button" key={String(screenComments)}
+                  className={draft.screenComments === screenComments ? "is-active" : ""}
+                  aria-pressed={draft.screenComments === screenComments}
+                  onClick={() => {
+                    setDraft((current) => ({ ...current, screenComments }));
+                    setSaved(false);
+                  }}>
+                  {translate("en", screenComments ? "screeningOn" : "screeningOff")}
+                </button>
+              ))}
+            </div>
+            <p className="control-help">{translate("en", "screeningHelp")}</p>
+            {draft.screenComments && session?.commentScreeningAvailable === false && (
+              <p className="control-help">{translate("en", "screeningSetup")}</p>
+            )}
           </fieldset>
           <fieldset className="language-field">
             <legend>{translate("en", "aiRecap")}</legend>

@@ -2,6 +2,14 @@ import type { SessionLanguage } from "../shared/contracts.js";
 
 const messages = {
   en: {
+    commentScreening: "Free-word screening",
+    screeningOn: "On",
+    screeningOff: "Off",
+    screeningHelp: "Check free-word Comments before displaying them. Only clear hateful slurs, dehumanizing abuse, and serious threats are blocked; swearing, hot takes, and banter are welcome. Each Comment, the session title, and question are sent to OpenAI. Choose this before starting.",
+    screeningSetup: "Add an OpenAI API key on the server before starting with screening on.",
+    screeningParticipant: "Comments are checked by OpenAI before display. Swearing and hot takes are welcome; severe abuse is filtered.",
+    checkingComment: "Checking Comment…",
+
     aiRecap: "AI recap",
     recapEnabled: "Enabled",
     recapDisabled: "Disabled",
@@ -67,6 +75,14 @@ const messages = {
     connecting: "Connecting to the session…",
   },
   fi: {
+    commentScreening: "Vapaan sanan suodatus",
+    screeningOn: "Päällä",
+    screeningOff: "Pois",
+    screeningHelp: "Tarkista vapaan sanan kommentit ennen näyttämistä. Vain selkeät vihamieliset solvaukset, ihmisarvoa halventava vihapuhe ja vakavat uhkaukset suodatetaan; kiroilu, kärkkäät mielipiteet ja kuittailu sallitaan. Jokainen kommentti, äänestyksen otsikko ja kysymys lähetetään OpenAI:lle. Valitse asetus ennen aloittamista.",
+    screeningSetup: "Määritä palvelimelle OpenAI API -avain ennen kuin aloitat suodatuksen ollessa päällä.",
+    screeningParticipant: "OpenAI tarkistaa kommentit ennen näyttämistä. Kiroilu ja kärkkäät mielipiteet sallitaan; vakavasti loukkaava sisältö suodatetaan.",
+    checkingComment: "Tarkistetaan kommenttia…",
+
     aiRecap: "Tekoälykooste",
     recapEnabled: "Käytössä",
     recapDisabled: "Pois käytöstä",
@@ -143,6 +159,10 @@ export function translate(
 }
 
 const finnishResponseErrors: Record<string, string> = {
+  comment_not_suitable: "Kommentti sisältää vakavasti loukkaavaa sisältöä, eikä sitä voi näyttää. Muotoile se uudelleen.",
+  comment_screening_unavailable: "Kommentin tarkistus ei nyt onnistu. Yritä hetken kuluttua uudelleen.",
+  response_pending: "Kommenttia tarkistetaan jo. Odota hetki ennen uutta lähetystä.",
+  session_changed: "Esittäjä muutti äänestystä kommentin tarkistuksen aikana. Yritä uudelleen.",
   comment_required: "Kirjoita lyhyt kommentti.",
   invalid_comment: "Kommentin pituuden on oltava 1–160 merkkiä.",
   invalid_option: "Valittu vaihtoehto ei kuulu tähän kysymykseen.",
