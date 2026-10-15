@@ -47,7 +47,7 @@ describe("optional AI recap lifecycle", () => {
     expect(() => command(session, "next")).toThrow();
     session = command(session, "end");
     expect(session.recapVisible).toBe(false);
-    const copy = service.duplicateEndedSession(session.id, "copy-off");
+    const copy = service.duplicateSession(session.id, "copy-off");
     expect(copy.aiRecapEnabled).toBe(false);
     const edited = service.updateDraft(copy.id, { ...draft, joinName: copy.joinName }, copy.controlRevision);
     expect(edited.aiRecapEnabled).toBe(true);
@@ -94,7 +94,7 @@ describe("optional AI recap lifecycle", () => {
     await service.close();
     service = new VotingService(handle.database, generate, changed);
     expect(service.displaySnapshot(session.id).recap?.content).toEqual(content);
-    const copy = service.duplicateEndedSession(session.id, "copy-on");
+    const copy = service.duplicateSession(session.id, "copy-on");
     expect(copy.aiRecapEnabled).toBe(true);
     expect(copy.recap.content).toBeNull();
     expect(copy.recapVisible).toBe(false);
@@ -156,7 +156,7 @@ describe("optional AI recap lifecycle", () => {
     session = command(session, "open_first");
     const early = command(session, "end");
     expect(early.recapVisible).toBe(false);
-    const copy = service.duplicateEndedSession(early.id, "another-session");
+    const copy = service.duplicateSession(early.id, "another-session");
     session = service.startSession(copy.id, copy.controlRevision, randomUUID());
     session = command(finishQuestions(session), "next");
     expect(session.recap.status).toBe("failed");

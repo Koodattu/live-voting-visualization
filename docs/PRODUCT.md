@@ -84,7 +84,7 @@ Multiple authenticated Admin browsers may control one Live Session. Presenter co
 - Ended Sessions disappear from the homepage but remain public at `/{joinName}` until deletion.
 - Anyone with the Join Name can view the Session Results. Unshown Questions remain Admin-only.
 - On End, Participant Views switch to the Session Results. The Presentation Display shows an enabled recap when ending from the last Question or recap; otherwise it stays on the final presented Question and its final Result or Comment Wall. If no Question was presented, it shows a simple completion screen.
-- Ended Sessions cannot restart. Their Question set can be duplicated into a new Draft with a new Join Name and no responses.
+- Draft and Ended Sessions can be duplicated from the Admin session list into a new Draft with a unique Join Name. The title, language, ordered Questions and Options, and Draft settings are preserved; participants, responses, presentation progress, and generated recaps are not copied. The original is unchanged. Ended Sessions cannot restart.
 - Admin may export final responses as CSV with Question, Option or Comment, Guest Identity, creation time, and last-update time. Export neutralizes spreadsheet-formula prefixes in authored text.
 - A Live Session cannot be deleted. Deleting an Ended Session requires typing its Join Name; an unused Draft uses a normal confirmation.
 - Deletion removes live data immediately and releases the Join Name. Existing backup copies age out within 14 days.

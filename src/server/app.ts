@@ -613,7 +613,7 @@ export async function buildApplication(
           },
         },
         async (request, reply) => {
-          const duplicate = service.duplicateEndedSession(
+          const duplicate = service.duplicateSession(
             request.params.sessionId,
             request.body.joinName,
           );

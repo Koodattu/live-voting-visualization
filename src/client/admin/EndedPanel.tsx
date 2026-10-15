@@ -6,6 +6,7 @@ import { Button, ConfirmationDialog, InlineNotice, StatusPill } from "../compone
 import { translate } from "../i18n.js";
 import { RecapSlide } from "../components/RecapSlide.js";
 import { usePresenterSession } from "./use-presenter-session.js";
+import { DuplicateSessionButton } from "./DuplicateSessionButton.js";
 
 export function EndedPanel({
   session,
@@ -22,32 +23,11 @@ export function EndedPanel({
   onSnapshot: (snapshot: AdminSessionDetail) => void;
   onAuthExpired: () => void;
 }) {
-  const [joinName, setJoinName] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recapControls = usePresenterSession(session, onSnapshot, onAuthExpired);
-
-  const duplicate = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const copy = await apiRequest<AdminSessionDetail>(
-        `/api/admin/sessions/${session.id}/duplicate`,
-        { method: "POST", body: JSON.stringify({ joinName }) },
-      );
-      onDuplicated(copy);
-    } catch (duplicateError) {
-      setError(
-        duplicateError instanceof Error
-          ? duplicateError.message
-          : "Could not duplicate this session.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const remove = async () => {
     setBusy(true);
@@ -169,27 +149,9 @@ export function EndedPanel({
 
         <aside className="ended-actions">
           <section>
-            <h2>Duplicate Question set</h2>
-            <p>Create a response-free Draft with a new Join Name.</p>
-            <label>
-              <span>New Join Name</span>
-              <div className="slug-input">
-                <span>/</span>
-                <input
-                  maxLength={24}
-                  value={joinName}
-                  placeholder="next-event"
-                  onChange={(event) => setJoinName(event.target.value.toLowerCase())}
-                />
-              </div>
-            </label>
-            <Button
-              variant="secondary"
-              disabled={busy || joinName.length < 3}
-              onClick={duplicate}
-            >
-              Duplicate to Draft
-            </Button>
+            <h2>{translate("en", "duplicateSession")}</h2>
+            <p>{translate("en", "duplicateSessionHelp")}</p>
+            <DuplicateSessionButton session={session} onDuplicated={onDuplicated} disabled={busy} />
           </section>
           <section className="danger-zone">
             <h2>Delete Session</h2>

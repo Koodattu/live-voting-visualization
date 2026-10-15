@@ -1551,26 +1551,37 @@ a:focus-visible {
   box-shadow: var(--shadow-surface);
 }
 
+.admin-session-item {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--divider);
+}
+
+.admin-session-item:last-child {
+  border-bottom: 0;
+}
+
+.admin-session-item > .button {
+  flex-shrink: 0;
+  margin-right: 20px;
+}
+
 .admin-session-row {
   display: grid;
   width: 100%;
   min-height: 86px;
   padding: 14px 20px;
-  grid-template-columns: 112px minmax(220px, 1fr) 150px 30px;
+  min-width: 0;
+  grid-template-columns: 112px minmax(0, 1fr) 150px 30px;
   align-items: center;
   gap: 18px;
   border: 0;
-  border-bottom: 1px solid var(--divider);
   color: inherit;
   background: transparent;
   text-align: left;
   transition-property: background-color;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
-}
-
-.admin-session-row:last-child {
-  border-bottom: 0;
 }
 
 .admin-session-row:hover {
@@ -1584,6 +1595,7 @@ a:focus-visible {
 }
 
 .admin-session-row__name strong {
+  overflow-wrap: anywhere;
   font-size: 16px;
 }
 
@@ -2306,6 +2318,14 @@ label > small {
 
   .admin-titlebar__actions .button {
     flex: 1 1 auto;
+  }
+
+  .admin-session-item {
+    flex-wrap: wrap;
+  }
+
+  .admin-session-item > .button {
+    margin: 0 20px 16px;
   }
 
   .admin-session-row {

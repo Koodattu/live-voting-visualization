@@ -26,6 +26,52 @@ describe("HTTP and realtime integration", () => {
     application = undefined;
   });
 
+  it.each(["draft", "ended"] as const)("duplicates a %s through the admin API and validates the new Join Name", async (status) => {
+    const config = await testConfig();
+    application = await buildApplication(config);
+    const source = application.service.createDraft({
+      title: "Reusable session", joinName: "original", language: "fi", lockQuestions: false,
+      questions: [{ type: "single_choice", prompt: "Ready?", options: [{ label: "Yes" }, { label: "No" }] }],
+    });
+    if (status === "ended") {
+      const live = application.service.startSession(source.id, source.controlRevision, "duplicate-start-0001");
+      application.service.runPresenterCommand(source.id, {
+        action: "end", requestId: "duplicate-end-0001", expectedControlRevision: live.controlRevision,
+      });
+    }
+    const original = application.service.adminSnapshot(source.id);
+    const url = `/api/admin/sessions/${source.id}/duplicate`;
+    const unauthorized = await application.app.inject({ method: "POST", url, payload: { joinName: "copy" } });
+    expect(unauthorized.statusCode).toBe(401);
+    const login = await application.app.inject({ method: "POST", url: "/api/admin/login", payload: { password: config.adminPassword } });
+    const cookie = String(login.headers["set-cookie"]).split(";")[0]!;
+    for (const [joinName, statusCode] of [["original", 409], ["admin", 400], ["ab", 400], ["not valid", 400]] as const) {
+      const rejected = await application.app.inject({ method: "POST", url, headers: { cookie }, payload: { joinName } });
+      expect(rejected.statusCode).toBe(statusCode);
+      expect(application.service.listAdminSessions()).toHaveLength(1);
+    }
+    const response = await application.app.inject({ method: "POST", url, headers: { cookie }, payload: { joinName: "new-place" } });
+    expect(response.statusCode).toBe(201);
+    const copy = response.json<AdminSessionDetail>();
+    expect(copy).toMatchObject({ status: "draft", title: source.title, language: "fi", lockQuestions: false, joinName: "new-place", joinedCount: 0 });
+    expect(copy.questions[0]?.prompt).toBe("Ready?");
+    expect(application.service.adminSnapshot(copy.id)).toEqual(copy);
+    expect(application.service.adminSnapshot(source.id)).toEqual(original);
+    expect(application.service.listAdminSessions()).toHaveLength(2);
+    expect(application.service.listLiveSessions()).toEqual([]);
+
+    const live = application.service.startSession(copy.id, copy.controlRevision, "duplicate-copy-start");
+    const liveResponse = await application.app.inject({
+      method: "POST", url: `/api/admin/sessions/${live.id}/duplicate`, headers: { cookie }, payload: { joinName: "live-copy" },
+    });
+    expect(liveResponse.statusCode).toBe(409);
+    const missing = await application.app.inject({
+      method: "POST", url: "/api/admin/sessions/missing/duplicate", headers: { cookie }, payload: { joinName: "missing-copy" },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(application.service.listAdminSessions()).toHaveLength(2);
+  });
+
   it("screens free-word submissions before any public broadcast and keeps rejected edits private", async () => {
     let resolve!: (decision: { suitable: boolean; severeAbuseProbability: number }) => void;
     const screen = vi.fn(() => new Promise<{ suitable: boolean; severeAbuseProbability: number }>((done) => { resolve = done; }));

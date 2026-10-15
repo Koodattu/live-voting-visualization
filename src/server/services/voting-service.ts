@@ -1303,16 +1303,16 @@ export class VotingService {
     return this.participantSnapshot(sessionId, guestId);
   }
 
-  duplicateEndedSession(
+  duplicateSession(
     sourceSessionId: string,
     newJoinName: string,
   ): AdminSessionDetail {
     const joinName = normalizeJoinName(newJoinName);
     const source = this.requireSessionById(sourceSessionId);
-    if (source.status !== "ended") {
+    if (source.status !== "draft" && source.status !== "ended") {
       throw new AppError(
         "invalid_session_state",
-        "Only an Ended Session can be duplicated.",
+        "Only a Draft or Ended Session can be duplicated.",
         409,
       );
     }

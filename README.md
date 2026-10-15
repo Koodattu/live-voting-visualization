@@ -34,6 +34,14 @@ Open `http://localhost:5173`. Vite serves the client and proxies API and
 Socket.IO traffic to the Fastify server on port 3000. SQLite data and daily
 backups are written to the ignored `data/` and `backups/` directories.
 
+## Reuse a Voting Session
+
+In the Admin session list, choose **Duplicate to Draft** beside any Draft or Ended
+Session, then enter a new, unique Join Name. The copy opens in the Draft editor
+with the same title, language, Questions, Options, order, and settings. Participants,
+responses, presentation progress, and generated recaps start fresh. The original
+Session is unchanged. Duplication is also available in an Ended Session's history.
+
 ## Optional AI closing recap
 
 Set `OPENAI_API_KEY` in the server's `.env`, then enable **AI recap** in a Draft
@@ -73,7 +81,7 @@ remain available if OpenAI is unconfigured or unavailable.
 
 **Free-word screening** is off by default and is set independently for each
 Draft Session. It is frozen when the session starts and copied when duplicating
-an ended session. Enable it before starting to check every submitted or edited
+a Draft or Ended Session. Enable it before starting to check every submitted or edited
 Feedback Comment. It requires the existing server-side `OPENAI_API_KEY`.
 
 The official OpenAI SDK calls the [Decisions API](https://developers.openai.com/api/docs/guides/decisions)

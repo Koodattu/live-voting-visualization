@@ -50,7 +50,7 @@ describe("optional free-word screening", () => {
     session = openFeedback(session);
     expect(() => service.updateDraft(session.id, { ...draft, screenComments: false }, session.controlRevision)).toThrow();
     session = command(session, "end");
-    expect(service.duplicateEndedSession(session.id, "copied-session").screenComments).toBe(true);
+    expect(service.duplicateSession(session.id, "copied-session").screenComments).toBe(true);
   });
 
   it("requires configuration only when screening is enabled", async () => {

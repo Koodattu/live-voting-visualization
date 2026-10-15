@@ -6,6 +6,7 @@ import type {
   SessionStatus,
 } from "../../shared/contracts.js";
 import { EndedPanel } from "../admin/EndedPanel.js";
+import { DuplicateSessionButton } from "../admin/DuplicateSessionButton.js";
 import { PresenterPanel } from "../admin/PresenterPanel.js";
 import { SessionEditor } from "../admin/SessionEditor.js";
 import { ApiError, apiRequest } from "../api.js";
@@ -78,10 +79,12 @@ function SessionList({
   sessions,
   onCreate,
   onSelect,
+  onDuplicated,
 }: {
   sessions: AdminSessionSummary[];
   onCreate: () => void;
   onSelect: (session: AdminSessionSummary) => void;
+  onDuplicated: (session: AdminSessionDetail) => void;
 }) {
   const groups: Array<{ status: SessionStatus; title: string }> = [
     { status: "live", title: "Live Sessions" },
@@ -120,31 +123,35 @@ function SessionList({
                 </div>
                 <div className="admin-session-list">
                   {groupSessions.map((session) => (
-                    <button
-                      className="admin-session-row"
-                      onClick={() => onSelect(session)}
-                      key={session.id}
-                    >
-                      <span className="admin-session-row__status">
-                        <StatusPill>
-                          {session.status === "live" && (
-                            <span className="pulse-dot" aria-hidden="true" />
-                          )}
-                          {session.status[0]!.toUpperCase() + session.status.slice(1)}
-                        </StatusPill>
-                      </span>
-                      <span className="admin-session-row__name">
-                        <strong>{session.title}</strong>
-                        <small>/{session.joinName}</small>
-                      </span>
-                      <span className="admin-session-row__counts tabular">
-                        {session.questionCount} Questions
-                        <small>{session.joinedCount} joined</small>
-                      </span>
-                      <span className="arrow" aria-hidden="true">
-                        →
-                      </span>
-                    </button>
+                    <div className="admin-session-item" key={session.id}>
+                      <button
+                        className="admin-session-row"
+                        onClick={() => onSelect(session)}
+                      >
+                        <span className="admin-session-row__status">
+                          <StatusPill>
+                            {session.status === "live" && (
+                              <span className="pulse-dot" aria-hidden="true" />
+                            )}
+                            {session.status[0]!.toUpperCase() + session.status.slice(1)}
+                          </StatusPill>
+                        </span>
+                        <span className="admin-session-row__name">
+                          <strong>{session.title}</strong>
+                          <small>/{session.joinName}</small>
+                        </span>
+                        <span className="admin-session-row__counts tabular">
+                          {session.questionCount} Questions
+                          <small>{session.joinedCount} joined</small>
+                        </span>
+                        <span className="arrow" aria-hidden="true">
+                          →
+                        </span>
+                      </button>
+                      {session.status !== "live" && (
+                        <DuplicateSessionButton session={session} onDuplicated={onDuplicated} />
+                      )}
+                    </div>
                   ))}
                 </div>
               </section>
@@ -316,6 +323,10 @@ export function AdminPage() {
       ) : (
         <SessionList
           sessions={sessions}
+          onDuplicated={(session) => {
+            setSelected(session);
+            void loadSessions();
+          }}
           onCreate={() => {
             setCreating(true);
             setSelected(null);

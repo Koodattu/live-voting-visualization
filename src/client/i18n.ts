@@ -2,6 +2,12 @@ import type { SessionLanguage } from "../shared/contracts.js";
 
 const messages = {
   en: {
+    duplicateSession: "Duplicate Session",
+    duplicateToDraft: "Duplicate to Draft",
+    duplicateSessionHelp: "Copy the title, Questions, Options, and settings into a new Draft. Choose a unique Join Name. Participants, responses, and generated recaps are not copied.",
+    newJoinName: "New Join Name",
+    duplicating: "Duplicating…",
+    duplicateFailed: "Could not duplicate this session.",
     commentScreening: "Free-word screening",
     screeningOn: "On",
     screeningOff: "Off",
@@ -75,6 +81,12 @@ const messages = {
     connecting: "Connecting to the session…",
   },
   fi: {
+    duplicateSession: "Kopioi äänestys",
+    duplicateToDraft: "Kopioi luonnokseksi",
+    duplicateSessionHelp: "Kopioi otsikko, kysymykset, vaihtoehdot ja asetukset uuteen luonnokseen. Valitse uusi liittymisnimi, joka ei ole vielä käytössä. Osallistujia, vastauksia ja luotuja tekoälykoosteita ei kopioida.",
+    newJoinName: "Uusi liittymisnimi",
+    duplicating: "Kopioidaan…",
+    duplicateFailed: "Äänestyksen kopiointi epäonnistui.",
     commentScreening: "Vapaan sanan suodatus",
     screeningOn: "Päällä",
     screeningOff: "Pois",

@@ -21,6 +21,79 @@ function requestId(label: string): string {
 }
 
 describe("VotingService", () => {
+  it.each([true, false])("duplicates Draft content and settings independently (toggles: %s)", async (enabled) => {
+    const { service, close } = await createService();
+    try {
+      const input: DraftSessionInput = {
+        title: "Reusable gallup",
+        joinName: "original",
+        language: enabled ? "fi" : "en",
+        lockQuestions: enabled,
+        aiRecapEnabled: enabled,
+        screenComments: enabled,
+        questions: [
+          { type: "single_choice", prompt: "First?", options: [{ label: "B" }, { label: "A" }] },
+          { type: "single_choice", prompt: "Second?", options: [{ label: "Yes" }, { label: "No" }, { label: "Maybe" }] },
+          { type: "feedback", prompt: "Thoughts?", options: [] },
+        ],
+      };
+      const source = service.createDraft(input);
+      const copy = service.duplicateSession(source.id, "NEXT-EVENT");
+      expect(copy).toMatchObject({
+        title: input.title,
+        joinName: "next-event",
+        language: input.language,
+        lockQuestions: enabled,
+        aiRecapEnabled: enabled,
+        screenComments: enabled,
+        status: "draft",
+        joinedCount: 0,
+        startedAt: null,
+        endedAt: null,
+        presentedPosition: null,
+        furthestPresentedPosition: -1,
+        recapVisible: false,
+        recap: { status: "idle", content: null },
+      });
+      expect(copy.id).not.toBe(source.id);
+      expect(copy.questions.map((question) => ({
+        type: question.type,
+        prompt: question.prompt,
+        options: question.options.map(({ label }) => ({ label })),
+      }))).toEqual(input.questions);
+      for (const [index, question] of copy.questions.entries()) {
+        expect(question.id).not.toBe(source.questions[index]!.id);
+        expect(question).toMatchObject({
+          position: index, status: "unshown", openedAt: null, closedAt: null,
+          participationDenominator: null, comments: [],
+        });
+        question.options.forEach((option, position) => {
+          expect(option.position).toBe(position);
+          expect(option.id).not.toBe(source.questions[index]!.options[position]!.id);
+        });
+      }
+      service.updateDraft(copy.id, { ...input, joinName: copy.joinName, title: "Changed copy", questions: [] }, copy.controlRevision);
+      expect(service.adminSnapshot(source.id)).toEqual(source);
+      service.deleteSession(copy.id, true);
+      expect(service.adminSnapshot(source.id)).toEqual(source);
+      expect(service.listLiveSessions()).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
+  it("duplicates a Draft with no Questions", async () => {
+    const { service, close } = await createService();
+    try {
+      const source = service.createDraft({ title: "Empty", joinName: "empty", language: "en", lockQuestions: true, questions: [] });
+      expect(service.duplicateSession(source.id, "empty-copy")).toMatchObject({
+        status: "draft", title: "Empty", questions: [],
+      });
+    } finally {
+      close();
+    }
+  });
+
   it("runs the complete presenter-led flow and preserves final results", async () => {
     const { service, database, close } = await createService();
     try {
@@ -194,10 +267,17 @@ describe("VotingService", () => {
       expect(exported.csv).toContain("\"'@great experience\"");
       expect(exported.csv).not.toContain(firstCredentials.secret);
 
-      const copy = service.duplicateEndedSession(session.id, "next-event");
+      const copy = service.duplicateSession(session.id, "next-event");
       expect(copy.status).toBe("draft");
       expect(copy.questions).toHaveLength(3);
       expect(copy.joinedCount).toBe(0);
+      expect(copy.questions.every((question) => question.status === "unshown")).toBe(true);
+      expect(copy.questions.every((question) => question.comments.length === 0)).toBe(true);
+      expect(copy.questions.filter((question) => question.result).map((question) => question.result!.responseCount)).toEqual([0, 0]);
+      expect(copy.presentedPosition).toBeNull();
+      expect(copy.startedAt).toBeNull();
+      expect(copy.endedAt).toBeNull();
+      expect(service.adminSnapshot(session.id)).toEqual(session);
 
       expect(() => service.deleteSession(session.id, "wrong")).toThrow(AppError);
       service.deleteSession(session.id, "event");
@@ -376,7 +456,7 @@ describe("VotingService", () => {
       expect(session.questions.every((question) => question.status === "closed")).toBe(true);
       expect(() => vote(0)).toThrow("no longer accepting responses");
       expect(() => comment("Too late")).toThrow("no longer accepting responses");
-      const copy = service.duplicateEndedSession(session.id, "revisit-copy");
+      const copy = service.duplicateSession(session.id, "revisit-copy");
       expect(copy.lockQuestions).toBe(lockQuestions);
       expect(copy.questions.every((question) => question.status === "unshown")).toBe(true);
     } finally {
