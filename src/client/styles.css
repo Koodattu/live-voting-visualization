@@ -1277,6 +1277,7 @@ a:focus-visible {
 }
 
 .display-question__header {
+  min-width: 0;
   align-self: center;
 }
 
@@ -1302,6 +1303,8 @@ a:focus-visible {
   margin-top: 3vh;
   font-size: clamp(50px, 6.5vw, 104px);
   letter-spacing: -0.055em;
+  hyphens: auto;
+  overflow-wrap: anywhere;
 }
 
 .display-results .result-bars {

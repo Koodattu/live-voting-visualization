@@ -126,7 +126,7 @@ export function DisplayPage() {
               <span className="display-question__number tabular">
                 {question.position + 1}
               </span>
-              <h1>{question.prompt}</h1>
+              <h1 lang={language}>{question.prompt}</h1>
             </header>
             {question.type === "single_choice" && question.result ? (
               <div className="display-results stagger-item" aria-live="polite">
