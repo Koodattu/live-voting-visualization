@@ -66,7 +66,7 @@ function Login({ onAuthenticated }: { onAuthenticated: () => void }) {
             />
           </label>
           {error && <InlineNotice tone="error">{error}</InlineNotice>}
-          <Button type="submit" disabled={busy || password.length === 0}>
+          <Button type="submit" disabled={busy}>
             {busy ? "Signing in…" : "Sign in"}
           </Button>
         </form>

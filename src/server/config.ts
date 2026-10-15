@@ -35,8 +35,8 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 
 export function readConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   const adminPassword = overrides.adminPassword ?? process.env.ADMIN_PASSWORD;
-  if (!adminPassword || adminPassword.length < 8) {
-    throw new Error("ADMIN_PASSWORD must contain at least 8 characters.");
+  if (adminPassword === undefined) {
+    throw new Error("ADMIN_PASSWORD must be configured.");
   }
 
   const configuredOrigin = (

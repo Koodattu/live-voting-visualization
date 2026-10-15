@@ -471,7 +471,7 @@ export async function buildApplication(
           type: "object",
           additionalProperties: false,
           required: ["password"],
-          properties: { password: { type: "string", maxLength: 1_000 } },
+          properties: { password: { type: "string" } },
         },
       },
     },

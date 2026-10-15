@@ -11,6 +11,7 @@ import type {
   ServerToClientEvents,
 } from "../src/shared/contracts.js";
 import { buildApplication, type Application } from "../src/server/app.js";
+import { readConfig } from "../src/server/config.js";
 import { testConfig } from "./helpers.js";
 
 type TestSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -24,6 +25,35 @@ describe("HTTP and realtime integration", () => {
     clients.length = 0;
     if (application) await application.app.close();
     application = undefined;
+  });
+
+  it.each([
+    { label: "one-character", password: "x" },
+    { label: "empty", password: "" },
+    { label: "Unicode and whitespace", password: "  ää 🔑  " },
+    { label: "long", password: "x".repeat(1_001) },
+  ])("starts and authenticates with a $label password", async ({ password }) => {
+    const config = readConfig(await testConfig({ adminPassword: password }));
+    application = await buildApplication(config);
+    await application.app.listen({ host: "127.0.0.1", port: 0 });
+
+    const rejected = await application.app.inject({
+      method: "POST", url: "/api/admin/login", payload: { password: `${password}!` },
+    });
+    expect(rejected.statusCode).toBe(401);
+    const missing = await application.app.inject({
+      method: "POST", url: "/api/admin/login", payload: {},
+    });
+    expect(missing.statusCode).toBe(400);
+    const login = await application.app.inject({
+      method: "POST", url: "/api/admin/login", payload: { password },
+    });
+    expect(login.statusCode).toBe(200);
+    const cookie = String(login.headers["set-cookie"]).split(";")[0]!;
+    const authenticated = await application.app.inject({
+      method: "GET", url: "/api/admin/me", headers: { cookie },
+    });
+    expect(authenticated.statusCode).toBe(200);
   });
 
   it.each(["draft", "ended"] as const)("duplicates a %s through the admin API and validates the new Join Name", async (status) => {

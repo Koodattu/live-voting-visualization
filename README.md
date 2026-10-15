@@ -23,7 +23,9 @@ npm ci
 npm run dev
 ```
 
-Set a long `ADMIN_PASSWORD` in `.env`. For local HTTP development, also set:
+Set `ADMIN_PASSWORD` in `.env`. Any explicitly configured value is accepted,
+including a short password or an empty value (`ADMIN_PASSWORD=`). There is no
+minimum length requirement. For local HTTP development, also set:
 
 ```dotenv
 PUBLIC_ORIGIN=http://localhost:5173
