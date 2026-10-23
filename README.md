@@ -15,7 +15,7 @@ The v1 behavior is specified in the [Product brief](docs/PRODUCT.md), with
 
 ## Local development
 
-Requirements: Node.js 24 or newer and npm.
+Requirements: Node.js 24.22.1 or newer and npm.
 
 ```powershell
 Copy-Item .env.example .env
